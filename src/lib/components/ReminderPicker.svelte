@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { formatReminder } from '$lib/utils';
-
 	let {
 		reminder,
 		onClose,
@@ -45,6 +43,7 @@
 	}
 
 	const willSaveLabel = $derived(formatFull(selected));
+	const isActive = $derived(reminder != null);
 
 	// Time spinner
 	const hours24 = $derived(selected.getHours());
@@ -83,27 +82,28 @@
 <div class="w-72 rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-5 shadow-2xl">
 	<div class="mb-3 text-base font-medium text-[var(--gkc-text)]">Reminder</div>
 
-	<!-- Current reminder on the note -->
-	<div class="mb-4 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-bg)] px-3 py-2.5">
-		<div class="text-[10px] font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
-			On this note
-		</div>
-		{#if reminder != null}
-			<div class="mt-1 flex items-start gap-2 text-sm font-medium text-[var(--gkc-text)]">
-				<span class="shrink-0" aria-hidden="true">⏰</span>
-				<span>{formatReminder(reminder)}</span>
+	<div
+		class="mb-4 rounded-xl border px-3 py-2.5 {isActive
+			? 'border-green-600/35 bg-green-600/10 dark:bg-green-500/15'
+			: 'border-[var(--gkc-border)] bg-[var(--gkc-bg)]'}"
+	>
+		<div class="flex items-center justify-between gap-2">
+			<div class="text-[10px] font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
+				Will remind you
 			</div>
-		{:else}
-			<div class="mt-1 text-sm text-[var(--gkc-text-muted)]">No reminder set</div>
-		{/if}
-	</div>
-
-	<!-- Live preview of what Save will apply -->
-	<div class="mb-4 rounded-xl bg-blue-600/10 px-3 py-2.5 dark:bg-blue-500/15">
-		<div class="text-[10px] font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
-			Will remind you
+			{#if isActive}
+				<span
+					class="shrink-0 rounded-full bg-green-600/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-800 dark:text-green-300"
+					>Active</span
+				>
+			{:else}
+				<span
+					class="shrink-0 rounded-full bg-black/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--gkc-text-muted)] dark:bg-white/10"
+					>Off</span
+				>
+			{/if}
 		</div>
-		<div class="mt-1 flex items-start gap-2 text-sm font-semibold text-[var(--gkc-text)]">
+		<div class="mt-1.5 flex items-start gap-2 text-sm font-semibold text-[var(--gkc-text)]">
 			<span class="shrink-0" aria-hidden="true">⏰</span>
 			<span>{willSaveLabel}</span>
 		</div>
