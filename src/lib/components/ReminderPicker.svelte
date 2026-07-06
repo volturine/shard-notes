@@ -52,6 +52,9 @@
 		return 'unsaved' as const;
 	});
 
+	const showSaveCancel = $derived(uiStatus !== 'active');
+	const showRemove = $derived(reminder != null);
+
 	// Time spinner
 	const hours24 = $derived(selected.getHours());
 	const minutes = $derived(selected.getMinutes());
@@ -121,15 +124,6 @@
 			<span class="shrink-0" aria-hidden="true">⏰</span>
 			<span class="min-w-0 truncate">{willSaveLabel}</span>
 		</div>
-		{#if reminder != null}
-			<button
-				type="button"
-				onclick={clear}
-				class="mt-2 text-xs font-medium text-[var(--gkc-text-muted)] hover:text-[var(--gkc-text)]"
-			>
-				Remove reminder
-			</button>
-		{/if}
 	</div>
 
 	<div class="mb-4 border-t border-[var(--gkc-border)] pt-4">
@@ -188,20 +182,35 @@
 		</div>
 	</div>
 
-	<div class="flex gap-2 border-t border-[var(--gkc-border)] pt-4">
-		<button
-			type="button"
-			onclick={() => onClose()}
-			class="flex-1 rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-bg)] py-2.5 text-sm font-medium text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
-		>
-			Cancel
-		</button>
-		<button
-			type="button"
-			onclick={save}
-			class="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
-		>
-			Save
-		</button>
-	</div>
+	{#if showSaveCancel || showRemove}
+		<div class="flex flex-col gap-2 border-t border-[var(--gkc-border)] pt-4">
+			{#if showSaveCancel}
+				<div class="flex gap-2">
+					<button
+						type="button"
+						onclick={() => onClose()}
+						class="flex-1 rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-bg)] py-2.5 text-sm font-medium text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
+					>
+						Cancel
+					</button>
+					<button
+						type="button"
+						onclick={save}
+						class="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+					>
+						Save
+					</button>
+				</div>
+			{/if}
+			{#if showRemove}
+				<button
+					type="button"
+					onclick={clear}
+					class="w-full rounded-lg py-2.5 text-sm font-medium text-[var(--gkc-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
+				>
+					Remove
+				</button>
+			{/if}
+		</div>
+	{/if}
 </div>
