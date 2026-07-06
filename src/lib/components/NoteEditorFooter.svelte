@@ -2,6 +2,7 @@
 	import type { NoteImage } from '$lib/types';
 	import { insertCodeBlock } from '$lib/checklistBody';
 	import { fileToNoteImage } from '$lib/noteImages';
+	import { notesStore } from '$lib/stores/notes.svelte';
 
 	let {
 		images = $bindable<NoteImage[]>([]),
@@ -55,6 +56,14 @@
 			const img = await fileToNoteImage(file);
 			images = [...images, img];
 			onImagesChange?.();
+			if (noteId) {
+				try {
+					await notesStore.flushNote(noteId);
+				} catch (err) {
+					console.error('[footer] image flush:', err);
+					imageError = 'Photo saved locally but storage failed — try again';
+				}
+			}
 		} catch (err) {
 			imageError = err instanceof Error ? err.message : 'Could not add image';
 		}

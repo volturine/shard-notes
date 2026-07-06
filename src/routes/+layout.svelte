@@ -7,7 +7,7 @@
 	import Topbar from '$lib/components/Topbar.svelte';
 	import NoteEditor from '$lib/components/NoteEditor.svelte';
 	import BottomNav from '$lib/components/BottomNav.svelte';
-	import { provideOpenEditor } from '$lib/editorContext';
+	import { provideEditorActions } from '$lib/editorContext';
 	import { fade, fly } from 'svelte/transition';
 	import { untrack } from 'svelte';
 	import { onMount } from 'svelte';
@@ -102,7 +102,24 @@
 		editingId = id;
 	}
 
-	provideOpenEditor(openEditor);
+	function startNewNote() {
+		const n = notesStore.createNote({
+			title: '',
+			body: '',
+			items: [],
+			kind: 'text'
+		});
+		editingId = n.id;
+	}
+
+	provideEditorActions({ openNote: openEditor, startNewNote });
+
+	$effect(() => {
+		if (uiStore.composerFocused) {
+			uiStore.composerFocused = false;
+			startNewNote();
+		}
+	});
 
 	function closeEditor() {
 		editingId = null;

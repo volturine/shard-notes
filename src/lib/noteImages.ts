@@ -1,18 +1,9 @@
 import { uid } from './utils';
 import type { NoteImage } from './types';
 
-/** Per-image cap (original file size). */
-const MAX_FILE_BYTES = 14 * 1024 * 1024;
-
-/** Store full-resolution image as data URL (no downscale). */
+/** Store full-resolution image as data URL (no compression or size cap). */
 export async function fileToNoteImage(file: File): Promise<NoteImage> {
-	if (!file.type.startsWith('image/')) {
-		throw new Error('Only image files are supported');
-	}
-	if (file.size > MAX_FILE_BYTES) {
-		throw new Error('Image must be under 14MB');
-	}
-	const dataUrl = await readAsDataUrl(file);
+	const dataUrl = await readFileAsDataUrl(file);
 	return {
 		id: uid(),
 		mime: file.type || 'image/jpeg',
@@ -22,11 +13,11 @@ export async function fileToNoteImage(file: File): Promise<NoteImage> {
 	};
 }
 
-function readAsDataUrl(file: File): Promise<string> {
+function readFileAsDataUrl(file: File): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const reader = new FileReader();
-		reader.onload = () => resolve(reader.result as string);
-		reader.onerror = () => reject(new Error('Could not read image'));
+		reader.onload = () => resolve(String(reader.result));
+		reader.onerror = () => reject(reader.error ?? new Error('Could not read image'));
 		reader.readAsDataURL(file);
 	});
 }

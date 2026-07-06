@@ -1,19 +1,26 @@
-// Shared context so child pages can request opening the note editor modal
-// without relying on slotted children prop args (which SvelteKit ignores).
+// Shared context: open existing note or start a new one in the same editor modal.
 import { getContext, setContext } from 'svelte';
 
-type OpenEditor = (id: string) => void;
+export type EditorActions = {
+	openNote: (id: string) => void;
+	startNewNote: () => void;
+};
 
-const KEY = Symbol('openEditor');
+const KEY = Symbol('editorActions');
 
-export function provideOpenEditor(fn: OpenEditor): void {
-	setContext<OpenEditor>(KEY, fn);
+export function provideEditorActions(actions: EditorActions): void {
+	setContext<EditorActions>(KEY, actions);
 }
 
-export function useOpenEditor(): OpenEditor {
-	const fn = getContext<OpenEditor>(KEY);
+export function useEditorActions(): EditorActions {
+	const fn = getContext<EditorActions>(KEY);
 	if (!fn) {
-		return () => {};
+		return { openNote: () => {}, startNewNote: () => {} };
 	}
 	return fn;
+}
+
+/** @deprecated use useEditorActions().openNote */
+export function useOpenEditor(): (id: string) => void {
+	return useEditorActions().openNote;
 }

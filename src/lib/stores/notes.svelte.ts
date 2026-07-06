@@ -13,7 +13,8 @@ import {
 	clearAllLabels
 } from '$lib/db/idb';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
-import { effectiveBody, toggleLineAt } from '$lib/checklistBody';
+import { effectiveBody, noteImages, toggleLineAt } from '$lib/checklistBody';
+import { mergeNoteLists, mergeTwoNotes } from '$lib/noteMerge';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { finishSyncCloudIndicator } from '$lib/syncCloudIndicator';
 import { noteForLocalStorage, stripMirrorPayload, clearOversizedNoteStorage } from '$lib/noteStorage';
@@ -78,20 +79,18 @@ export class NotesStore {
 	// --- Lifecycle -------------------------------------------------------
 	async init() {
 		if (this.loaded) {
-			await this.hydrateImagesFromIDB();
+			await this.rehydrateFromIDB();
 			return;
 		}
 		if (this.notes.length > 0) {
 			this.loaded = true;
-			await this.hydrateImagesFromIDB();
+			await this.rehydrateFromIDB();
 			return;
 		}
 
-		// 1. Read from localStorage mirror FIRST (sync, always up-to-date,
-		//    survives iOS private browsing / IDB quota issues).
 		let notes: Note[] = [];
 		let labels: Label[] = [];
-		if (typeof localStorage !== "undefined") {
+		if (typeof localStorage !== 'undefined') {
 			try {
 				const mNotes = localStorage.getItem(LS_NOTES_MIRROR);
 				if (mNotes) {
@@ -103,19 +102,15 @@ export class NotesStore {
 			} catch {}
 		}
 
-		// 2. If localStorage was empty, try IndexedDB as secondary source.
-		if (notes.length === 0) {
-			try {
-				const [dbNotes, dbLabels] = await Promise.all([getAllNotes(), getAllLabels()]);
-				notes = dbNotes;
-				if (labels.length === 0) labels = dbLabels;
-			} catch {}
-		}
+		try {
+			const [dbNotes, dbLabels] = await Promise.all([getAllNotes(), getAllLabels()]);
+			notes = mergeNoteLists(notes, dbNotes);
+			if (labels.length === 0) labels = dbLabels;
+		} catch {}
 
-		// 3. If both are empty AND we have never seeded before, seed.
-		const seededFlag = typeof localStorage !== "undefined" ? localStorage.getItem("gkc-seeded") : null;
+		const seededFlag = typeof localStorage !== 'undefined' ? localStorage.getItem('gkc-seeded') : null;
 		if (notes.length === 0 && labels.length === 0 && !seededFlag) {
-			localStorage.setItem("gkc-seeded", "1");
+			localStorage.setItem('gkc-seeded', '1');
 			const seed = this.seedNotes();
 			this.notes = seed;
 			this.mirrorToLS();
@@ -126,27 +121,39 @@ export class NotesStore {
 		}
 		this.purgeOldTrash();
 		this.loaded = true;
-		await this.hydrateImagesFromIDB();
 	}
 
-	private async hydrateImagesFromIDB() {
+	private async rehydrateFromIDB() {
 		try {
 			const dbNotes = await getAllNotes();
 			if (!dbNotes.length) return;
-			const byId = new Map(dbNotes.map((n) => [n.id, n]));
-			let changed = false;
-			const merged = this.notes.map((n) => {
-				const db = byId.get(n.id);
-				if (db?.images?.length) {
-					changed = true;
-					return { ...n, images: db.images };
-				}
-				return n;
-			});
-			if (changed) this.notes = merged;
+			const merged = mergeNoteLists(this.notes, dbNotes);
+			this.notes = merged.sort((a, b) => b.updatedAt - a.updatedAt);
 		} catch (err) {
-			console.error('[notes] hydrateImagesFromIDB:', err);
+			console.error('[notes] rehydrateFromIDB:', err);
 		}
+	}
+
+	async flushNote(id: string): Promise<void> {
+		const n = this.notes.find((x) => x.id === id);
+		if (!n) return;
+		if (this.mirrorTimer) {
+			clearTimeout(this.mirrorTimer);
+			this.mirrorTimer = null;
+		}
+		await putNote(n);
+		this.mirrorToLS();
+	}
+
+	discardIfEmpty(id: string): void {
+		const n = this.notes.find((x) => x.id === id);
+		if (!n) return;
+		const empty =
+			!n.title.trim() &&
+			!effectiveBody(n).trim() &&
+			!noteImages(n).some((i) => (i.dataUrl?.length ?? 0) > 0);
+		if (!empty) return;
+		this.deleteNoteForever(id);
 	}
 
 	/** Remove notes that have been in trash > 7 days. */
@@ -480,8 +487,11 @@ export class NotesStore {
 				if (remote) {
 					remoteMap.delete(this.notes[i].id);
 					if (remote.updatedAt > this.notes[i].updatedAt) {
-						this.notes[i] = remote;
+						this.notes[i] = mergeTwoNotes(this.notes[i], remote);
 						updatedCount++;
+					} else if (remote.updatedAt < this.notes[i].updatedAt) {
+						// keep local but ensure images not lost if remote had blobs
+						this.notes[i] = mergeTwoNotes(remote, this.notes[i]);
 					}
 				}
 			}

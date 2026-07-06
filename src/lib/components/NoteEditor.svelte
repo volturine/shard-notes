@@ -77,10 +77,16 @@
 		commit({ title, body, items: [], kind: 'text', images });
 	}
 
-	function close() {
+	async function close() {
 		if (timer) clearTimeout(timer);
 		if (note) {
 			commit({ title, body, items: [], kind: 'text', images });
+			try {
+				await notesStore.flushNote(note.id);
+			} catch (err) {
+				console.error('[NoteEditor] flush failed:', err);
+			}
+			notesStore.discardIfEmpty(note.id);
 		}
 		onClose();
 	}
