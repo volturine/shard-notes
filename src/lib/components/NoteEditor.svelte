@@ -2,8 +2,9 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { formatReminder } from '$lib/utils';
-	import { effectiveBody, noteToPlainText } from '$lib/checklistBody';
-	import type { NoteColor } from '$lib/types';
+	import { effectiveBody, noteToPlainText, insertCodeBlock, noteImages } from '$lib/checklistBody';
+	import type { NoteColor, NoteImage } from '$lib/types';
+	import { fileToNoteImage } from '$lib/noteImages';
 	import { KEEP_COLORS, KEEP_DARK_COLORS } from '$lib/types';
 	import ColorPalette from './ColorPalette.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
@@ -26,6 +27,9 @@
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
 	let copyFlash = $state(false);
+	let images = $state<NoteImage[]>([]);
+	let imageError = $state('');
+	let fileInput: HTMLInputElement | null = $state(null);
 
 	let syncedId: string | null = null;
 	$effect(() => {
@@ -34,6 +38,7 @@
 			syncedId = note.id;
 			title = note.title;
 			body = effectiveBody(note);
+			images = noteImages(note).map((i) => ({ ...i }));
 		}
 	});
 
@@ -60,14 +65,44 @@
 		if (timer) clearTimeout(timer);
 		timer = setTimeout(() => {
 			if (!note) return;
-			commit({ title, body, items: [], kind: 'text' });
+			commit({ title, body, items: [], kind: 'text', images });
 		}, 250);
+	}
+
+	function commitNow() {
+		if (!note) return;
+		commit({ title, body, items: [], kind: 'text', images });
+	}
+
+	function addCodeBlock() {
+		body = insertCodeBlock(body);
+		scheduleCommit();
+	}
+
+	async function onPickImage(e: Event) {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file || !note) return;
+		imageError = '';
+		try {
+			const img = await fileToNoteImage(file);
+			images = [...images, img];
+			commitNow();
+		} catch (err) {
+			imageError = err instanceof Error ? err.message : 'Could not add image';
+		}
+	}
+
+	function removeImage(id: string) {
+		images = images.filter((i) => i.id !== id);
+		commitNow();
 	}
 
 	function close() {
 		if (timer) clearTimeout(timer);
 		if (note) {
-			commit({ title, body, items: [], kind: 'text' });
+			commit({ title, body, items: [], kind: 'text', images });
 		}
 		onClose();
 	}
@@ -125,8 +160,27 @@
 					class="mb-3 w-full bg-transparent text-xl font-medium text-[var(--gkc-text)] placeholder:text-[var(--gkc-text-muted)] outline-none"
 				/>
 
+				{#if images.length > 0}
+					<div class="mb-3 flex flex-wrap gap-2">
+						{#each images as img (img.id)}
+							<div class="relative">
+								<img src={img.dataUrl} alt={img.name ?? 'Photo'} class="max-h-40 max-w-full rounded-lg object-cover" />
+								<button
+									type="button"
+									class="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-xs text-white"
+									onclick={() => removeImage(img.id)}
+									aria-label="Remove photo"
+								>✕</button>
+							</div>
+						{/each}
+					</div>
+				{/if}
+				{#if imageError}
+					<p class="mb-2 text-xs text-red-600 dark:text-red-400">{imageError}</p>
+				{/if}
+
 				<textarea
-					placeholder="Take a note… Use [ ] or [] for checklist lines"
+					placeholder="Take a note… [ ] checklist · ``` for code blocks"
 					bind:value={body}
 					oninput={scheduleCommit}
 					class="min-h-[28vh] w-full flex-1 resize-none bg-transparent text-sm leading-relaxed text-[var(--gkc-text)] placeholder:text-[var(--gkc-text-muted)] outline-none"
@@ -145,6 +199,14 @@
 					<svg viewBox="0 0 24 24" class="h-5 w-5 {note.pinned ? 'fill-current' : 'fill-none stroke-current'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M14 2l8 8-4 1-3 7-3-3-4 4-1-1 4-4-3-3 7-3z" fill="{note.pinned ? 'currentColor' : 'none'}" stroke="{note.pinned ? 'none' : 'currentColor'}"/>
 					</svg>
+				</button>
+
+				<input bind:this={fileInput} type="file" accept="image/*" class="hidden" onchange={onPickImage} />
+				<button type="button" class="icon-btn h-9 w-9 p-2" title="Add photo" onclick={() => fileInput?.click()} aria-label="Add photo">
+					<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+				</button>
+				<button type="button" class="icon-btn h-9 w-9 p-2" title="Insert code block" onclick={addCodeBlock} aria-label="Code block">
+					<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
 				</button>
 
 				<button type="button" class="icon-btn h-9 w-9 p-2" title="Color" onclick={() => { paletteOpen = !paletteOpen; reminderOpen = false; labelOpen = false; }} aria-label="Color">

@@ -18,8 +18,10 @@ export const POST: RequestHandler = async ({ request }) => {
 	const key = username.trim().toLowerCase();
 
 	if (data[key]) {
-		// Username exists — return existing sync code.
-		return json({ syncCode: data[key].syncCode, username: key });
+		return json(
+			{ error: 'An account with this username already exists. Use your sync code on Link device.' },
+			{ status: 409 }
+		);
 	}
 
 	// Generate a unique 6-digit sync code.

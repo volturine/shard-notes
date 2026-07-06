@@ -20,15 +20,26 @@ export interface ChecklistItem {
 	checked: boolean;
 }
 
+export interface NoteImage {
+	id: string;
+	mime: string;
+	/** data: URL (JPEG) */
+	dataUrl: string;
+	name?: string;
+	createdAt: number;
+}
+
 export type NoteKind = 'text' | 'list';
 
 export interface Note {
 	id: string;
 	title: string;
-	/** Plain text body for text notes. */
+	/** Plain text body for text notes. Supports ``` fenced code blocks. */
 	body: string;
 	/** Checklist items for list notes. */
 	items: ChecklistItem[];
+	/** Inline photos attached to the note. */
+	images?: NoteImage[];
 	kind: NoteKind;
 	color: NoteColor;
 	pinned: boolean;

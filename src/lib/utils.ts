@@ -50,7 +50,8 @@ export function cloneNote(note: import('$lib/types').Note): import('$lib/types')
 	return {
 		...note,
 		items: note.items.map((i) => ({ ...i })),
-		labels: [...note.labels]
+		labels: [...note.labels],
+		images: note.images ? note.images.map((i) => ({ ...i })) : []
 	};
 }
 

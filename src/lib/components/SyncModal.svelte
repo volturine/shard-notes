@@ -31,6 +31,9 @@
 			await notesStore.syncWithCloudManual();
 		} else {
 			error = result.error || 'Registration failed';
+			if (result.accountExists) {
+				mode = 'register';
+			}
 		}
 	}
 
@@ -202,7 +205,18 @@
 						onkeydown={(e) => e.key === 'Enter' && doRegister()}
 					/>
 				</label>
-				{#if error}<div class="text-sm text-red-600 dark:text-red-400">{error}</div>{/if}
+				{#if error}
+					<div class="text-sm text-red-600 dark:text-red-400">{error}</div>
+					{#if error.includes('already exists')}
+						<button
+							type="button"
+							onclick={() => { mode = 'link'; error = ''; }}
+							class="w-full rounded-lg border border-[var(--gkc-border)] px-3 py-2 text-sm font-medium text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						>
+							Link with my sync code →
+						</button>
+					{/if}
+				{/if}
 				<button
 					onclick={doRegister}
 					disabled={loading}

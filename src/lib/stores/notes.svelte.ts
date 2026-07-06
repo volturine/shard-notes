@@ -128,7 +128,8 @@ export class NotesStore {
 			createdAt: now,
 			updatedAt: now,
 			reminder: partial.reminder ?? null,
-			labels: partial.labels ?? []
+			labels: partial.labels ?? [],
+			images: partial.images ?? []
 		};
 		this.notes = [note, ...this.notes];
 		this.persist(note.id);

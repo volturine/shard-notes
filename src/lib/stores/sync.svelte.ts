@@ -41,7 +41,12 @@ class SyncStore {
 		} catch { /* ignore */ }
 	}
 
-	async register(username: string): Promise<{ success: boolean; syncCode?: string; error?: string }> {
+	async register(username: string): Promise<{
+		success: boolean;
+		syncCode?: string;
+		error?: string;
+		accountExists?: boolean;
+	}> {
 		try {
 			const res = await fetch('/api/sync/register', {
 				method: 'POST',
@@ -49,7 +54,13 @@ class SyncStore {
 				body: JSON.stringify({ username })
 			});
 			const data = await res.json();
-			if (!res.ok) return { success: false, error: data.error };
+			if (!res.ok) {
+				return {
+					success: false,
+					error: data.error || 'Registration failed',
+					accountExists: res.status === 409
+				};
+			}
 			this.account = { username: data.username, syncCode: data.syncCode };
 			this.saveAccount();
 			return { success: true, syncCode: data.syncCode };
