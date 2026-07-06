@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { formatReminder } from '$lib/utils';
+
 	let {
 		reminder,
 		onClose,
@@ -37,12 +39,12 @@
 		selected.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
 	);
 
-	function formatFull(d: Date): string {
+	function formatCompact(d: Date): string {
 		const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-		return `${d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })} at ${time}`;
+		return `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} · ${time}`;
 	}
 
-	const willSaveLabel = $derived(formatFull(selected));
+	const willSaveLabel = $derived(formatCompact(selected));
 	const draftMs = $derived(selected.getTime());
 
 	/** off = no reminder on note; active = saved & unchanged; unsaved = edits or new before Save */
@@ -52,7 +54,13 @@
 		return 'unsaved' as const;
 	});
 
-	const savedLabel = $derived(reminder != null ? formatFull(new Date(reminder)) : '');
+	const hintLine = $derived.by(() => {
+		if (uiStatus === 'unsaved' && reminder != null) {
+			return `Was: ${formatReminder(reminder)}`;
+		}
+		if (uiStatus === 'new') return 'Tap Save to turn the reminder on.';
+		return 'No pending changes.';
+	});
 
 	// Time spinner
 	const hours24 = $derived(selected.getHours());
@@ -92,44 +100,45 @@
 	<div class="mb-3 text-base font-medium text-[var(--gkc-text)]">Reminder</div>
 
 	<div
-		class="mb-4 rounded-xl border px-3 py-2.5 {uiStatus === 'active'
+		class="mb-4 min-h-[5.25rem] rounded-xl border px-3 py-2.5 {uiStatus === 'active'
 			? 'border-green-600/35 bg-green-600/10 dark:bg-green-500/15'
 			: uiStatus === 'unsaved'
 				? 'border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/15'
 				: 'border-blue-500/35 bg-blue-500/10 dark:bg-blue-500/15'}"
 	>
 		<div class="flex items-center justify-between gap-2">
-			<div class="text-[10px] font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
+			<div class="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
 				Will remind you
 			</div>
 			{#if uiStatus === 'active'}
 				<span
-					class="shrink-0 rounded-full bg-green-600/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-800 dark:text-green-300"
+					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-green-600/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-800 dark:text-green-300"
 					>Active</span
 				>
 			{:else if uiStatus === 'unsaved'}
 				<span
-					class="shrink-0 rounded-full bg-amber-500/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900 dark:text-amber-200"
-					>Unsaved</span
+					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-amber-500/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900 dark:text-amber-200"
+					>Edit</span
 				>
 			{:else}
 				<span
-					class="shrink-0 rounded-full bg-blue-600/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300"
+					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-blue-600/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300"
 					>New</span
 				>
 			{/if}
 		</div>
-		<div class="mt-1.5 flex items-start gap-2 text-sm font-semibold text-[var(--gkc-text)]">
+		<div class="mt-1.5 flex min-h-[1.25rem] items-center gap-2 text-sm font-semibold text-[var(--gkc-text)]">
 			<span class="shrink-0" aria-hidden="true">⏰</span>
-			<span>{willSaveLabel}</span>
+			<span class="min-w-0 truncate">{willSaveLabel}</span>
 		</div>
-		{#if uiStatus === 'unsaved' && reminder != null}
-			<p class="mt-2 text-xs text-[var(--gkc-text-muted)]">
-				Saved on note: <span class="font-medium">{savedLabel}</span>
-			</p>
-		{:else if uiStatus === 'new'}
-			<p class="mt-2 text-xs text-[var(--gkc-text-muted)]">Tap Save to turn the reminder on.</p>
-		{/if}
+		<p
+			class="mt-2 h-4 truncate text-xs leading-4 text-[var(--gkc-text-muted)] {uiStatus === 'active'
+				? 'opacity-0'
+				: ''}"
+			aria-hidden={uiStatus === 'active'}
+		>
+			{hintLine}
+		</p>
 	</div>
 
 	<div class="mb-4 border-t border-[var(--gkc-border)] pt-4">
