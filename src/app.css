@@ -73,42 +73,40 @@ body {
 	-webkit-overflow-scrolling: touch;
 }
 
-/* Note grid — masonry via CSS columns in grid mode (like Keep); flex column in list mode. */
+/* Note grid — flex-wrap masonry (more stable than CSS columns on mobile). */
 .masonry {
 	width: 100%;
 }
 
 .masonry-grid {
-	column-gap: 10px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
 	padding: 0 12px;
-	column-count: 2;
 }
 
 .masonry-grid > * {
-	break-inside: avoid;
-	-webkit-column-break-inside: avoid;
-	page-break-inside: avoid;
-	margin-bottom: 10px;
-	width: 100%;
-	display: block;
+	width: calc(50% - 5px);
 }
 
 @media (min-width: 600px) {
-	.masonry-grid {
-		column-count: 3;
+	.masonry-grid > * {
+		width: calc(33.333% - 7px);
 	}
 }
 
 @media (min-width: 768px) {
 	.masonry-grid {
-		column-count: 4;
 		padding: 0 24px;
+	}
+	.masonry-grid > * {
+		width: calc(25% - 8px);
 	}
 }
 
 @media (min-width: 1100px) {
-	.masonry-grid {
-		column-count: 5;
+	.masonry-grid > * {
+		width: calc(20% - 8px);
 	}
 }
 

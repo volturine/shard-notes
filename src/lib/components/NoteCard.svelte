@@ -181,9 +181,9 @@
 			<NoteBodyDisplay {note} clamp={true} />
 		</div>
 
-		<!-- Labels chips — above the action bar, near bottom -->
+		<!-- Labels chips — at the very bottom of the card -->
 		{#if labelsForNote.length}
-			<div class="flex flex-wrap gap-1 px-3 pb-1 pt-1">
+			<div class="flex flex-wrap gap-1 px-3 pb-3 pt-1">
 				{#each labelsForNote as label (label.id)}
 					<span
 						class="rounded px-1.5 py-0.5 text-[10px] font-medium bg-black/5 text-[var(--gkc-text-muted)] dark:bg-white/10"
