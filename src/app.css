@@ -1,0 +1,167 @@
+@import 'tailwindcss';
+
+/* Dark mode is driven by a `.dark` class on <html> via the `class` strategy. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+	--keep-default: #ffffff;
+	--keep-red: #f28b82;
+	--keep-orange: #f6aea0;
+	--keep-yellow: #f7d875;
+	--keep-green: #b3e2a1;
+	--keep-teal: #98e9d9;
+	--keep-blue: #a9d5f4;
+	--keep-darkblue: #9bb8f3;
+	--keep-purple: #c6b3f2;
+	--keep-pink: #f9c2d8;
+	--keep-brown: #d6c5b0;
+	--keep-gray: #f0f0f0;
+
+	--gkc-bg: #ffffff;
+	--gkc-surface: #f8f9fa;
+	--gkc-text: #202124;
+	--gkc-text-muted: #5f6368;
+	--gkc-border: #e0e0e0;
+}
+
+.dark {
+	--keep-default: #1f1f1f;
+	--keep-red: #5a3636;
+	--keep-orange: #5a4a3f;
+	--keep-yellow: #5a5240;
+	--keep-green: #3a4a3a;
+	--keep-teal: #2f4a4a;
+	--keep-blue: #2f3a4f;
+	--keep-darkblue: #2d3850;
+	--keep-purple: #3d3756;
+	--keep-pink: #4f3e4e;
+	--keep-brown: #4f4a44;
+	--keep-gray: #3c3c3c;
+
+	--gkc-bg: #1a1a1a;
+	--gkc-surface: #242424;
+	--gkc-text: #e8eaed;
+	--gkc-text-muted: #9aa0a6;
+	--gkc-border: #3c4043;
+}
+
+html {
+	background-color: var(--gkc-bg);
+}
+
+/* Force the main app container into its own GPU compositing layer.
+   This prevents iOS Safari from repainting the entire page when a
+   position:fixed overlay (NoteEditor) is shown/hidden on top of it. */
+.app-shell {
+	transform: translateZ(0);
+	-webkit-transform: translateZ(0);
+	will-change: transform;
+}
+
+html,
+body {
+	height: 100%;
+}
+
+body {
+	background-color: var(--gkc-bg);
+	color: var(--gkc-text);
+	font-family: 'Google Sans', 'Roboto', system-ui, Arial, sans-serif;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	overscroll-behavior: none;
+	-webkit-overflow-scrolling: touch;
+}
+
+/* Note grid — masonry via CSS columns in grid mode (like Keep); flex column in list mode. */
+.masonry {
+	width: 100%;
+}
+
+.masonry-grid {
+	column-gap: 10px;
+	padding: 0 12px;
+	column-count: 2;
+}
+
+.masonry-grid > * {
+	break-inside: avoid;
+	-webkit-column-break-inside: avoid;
+	page-break-inside: avoid;
+	margin-bottom: 10px;
+	width: 100%;
+	display: block;
+}
+
+@media (min-width: 600px) {
+	.masonry-grid {
+		column-count: 3;
+	}
+}
+
+@media (min-width: 768px) {
+	.masonry-grid {
+		column-count: 4;
+		padding: 0 24px;
+	}
+}
+
+@media (min-width: 1100px) {
+	.masonry-grid {
+		column-count: 5;
+	}
+}
+
+.masonry-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	max-width: 720px;
+	margin: 0 auto;
+	padding: 0 16px;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.masonry-list > * {
+	width: 100%;
+}
+
+/* Hide scrollbar on the sidebar for a cleaner look. */
+.sidebar-scroll {
+	scrollbar-width: thin;
+}
+
+/* Subtle focus ring used by icon buttons. */
+.icon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 9999px;
+	transition: background-color 120ms ease, color 120ms ease;
+}
+.icon-btn:hover {
+	background-color: rgba(0, 0, 0, 0.07);
+}
+.dark .icon-btn:hover {
+	background-color: rgba(255, 255, 255, 0.08);
+}
+/* Hide elements on phone screens (under 640px) */
+@media (max-width: 639px) {
+	.mobile-hide { display: none !important; }
+}
+/* Sidebar active item */
+.nav-active {
+	background-color: #fef9c3; /* yellow-100 */
+	color: #1a1a1a;
+	font-weight: 600;
+}
+.dark .nav-active {
+	background-color: rgba(202, 138, 4, 0.15); /* yellow-900/40 */
+	color: #fde68a; /* yellow-100 */
+}
+
+/* Cloud sync spin — class on <html> so Svelte re-renders don't reset the animation */
+html.gkc-sync-active [data-gkc-sync-icon] {
+	animation: spin 1s linear infinite;
+}

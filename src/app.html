@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en" style="background-color: #ffffff;">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+		<meta name="text-scale" content="scale" />
+
+		<!-- PWA / iOS standalone -->
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+		<meta name="apple-mobile-web-app-title" content="Keep" />
+		<meta name="mobile-web-app-capable" content="yes" />
+		<link rel="manifest" href="/manifest.json" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<link rel="icon" type="image/png" href="/icon-192.png" />
+
+		<script>
+			// Apply theme + background BEFORE CSS loads to prevent white flash.
+			// iOS reloads the page when returning to a standalone web app, and with
+			// ssr=false the body is empty until Svelte boots. This sets the correct
+			// background color as an inline style so it's visible immediately.
+			(function () {
+				try {
+					var raw = localStorage.getItem('gkc-ui-state');
+					var dark = null;
+					if (raw) {
+						var parsed = JSON.parse(raw);
+						if (typeof parsed.dark === 'boolean') dark = parsed.dark;
+					}
+					if (dark === null) {
+						dark = matchMedia('(prefers-color-scheme: dark)').matches;
+					}
+					var el = document.documentElement;
+					if (dark) {
+						el.classList.add('dark');
+						el.style.backgroundColor = '#1a1a1a';
+						el.style.colorScheme = 'dark';
+					} else {
+						el.classList.remove('dark');
+						el.style.backgroundColor = '#ffffff';
+						el.style.colorScheme = 'light';
+					}
+				} catch (e) {
+					// Default to dark if anything fails (user prefers dark).
+					document.documentElement.style.backgroundColor = '#1a1a1a';
+				}
+			})();
+		</script>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover" style="background-color: inherit;">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>
