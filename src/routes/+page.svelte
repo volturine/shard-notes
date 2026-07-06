@@ -1,6 +1,7 @@
 <script lang="ts">
 	import NoteComposer from '$lib/components/NoteComposer.svelte';
 	import NoteCard from '$lib/components/NoteCard.svelte';
+	import MasonryGrid from '$lib/components/MasonryGrid.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { useOpenEditor } from '$lib/editorContext';
@@ -28,13 +29,17 @@
 	{/if}
 
 	{#if filteredPinned.length > 0}
-		<div class="masonry {uiStore.layout === 'grid' ? 'masonry-grid' : 'masonry-list'} mb-8">
-			{#each filteredPinned as note (note.id)}
-				<div>
-					<NoteCard {note} onOpen={openEditor} />
-				</div>
-			{/each}
-		</div>
+		{#if uiStore.layout === 'grid'}
+			<MasonryGrid notes={filteredPinned} onOpen={openEditor} class="mb-8" />
+		{:else}
+			<div class="masonry masonry-list mb-8">
+				{#each filteredPinned as note (note.id)}
+					<div>
+						<NoteCard {note} onOpen={openEditor} />
+					</div>
+				{/each}
+			</div>
+		{/if}
 	{/if}
 
 	{#if filteredOthers.length > 0 || filteredPinned.length === 0}
@@ -50,13 +55,17 @@
 			<div class="mb-2 text-5xl">🗒️</div>
 			<div class="text-sm">No notes here yet.</div>
 		</div>
-	{:else}
-		<div class="masonry {uiStore.layout === 'grid' ? 'masonry-grid' : 'masonry-list'}">
-			{#each filteredOthers as note (note.id)}
-				<div>
-					<NoteCard {note} onOpen={openEditor} />
-				</div>
-			{/each}
-		</div>
+	{:else if filteredOthers.length > 0}
+		{#if uiStore.layout === 'grid'}
+			<MasonryGrid notes={filteredOthers} onOpen={openEditor} />
+		{:else}
+			<div class="masonry masonry-list">
+				{#each filteredOthers as note (note.id)}
+					<div>
+						<NoteCard {note} onOpen={openEditor} />
+					</div>
+				{/each}
+			</div>
+		{/if}
 	{/if}
 </div>

@@ -156,7 +156,7 @@
 	{/if}
 
 	<article
-		class="group relative z-[1] w-full cursor-pointer rounded-lg border border-black/5 shadow-sm transition-shadow touch-pan-y dark:border-white/10"
+		class="group relative z-[1] flex w-full max-h-[320px] cursor-pointer flex-col overflow-hidden rounded-lg border border-black/5 shadow-sm transition-shadow touch-pan-y dark:border-white/10"
 		style="background-color: {bgColor(note.color)}; transform: translate3d({offsetX}px, 0, 0); will-change: transform; transition: {dragging ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1), box-shadow 0.2s'};"
 		class:shadow-md={note.pinned}
 		ontouchstart={onTouchStart}
@@ -174,7 +174,7 @@
 			</div>
 		{/if}
 
-		<div class="block w-full text-left p-3 pb-2">
+		<div class="block min-h-0 flex-1 w-full overflow-hidden p-3 pb-2 text-left">
 			{#if note.title}
 				<h3 class="mb-1 text-sm font-medium leading-snug text-[var(--gkc-text)]">{note.title}</h3>
 			{/if}
@@ -197,7 +197,7 @@
 		<!-- Footer actions — absolute overlay at bottom, doesn't take flow space -->
 		<div
 			data-card-action
-			class="absolute inset-x-0 bottom-0 flex items-center gap-0.5 rounded-b-lg px-2 py-1 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto"
+			class="absolute inset-x-0 bottom-0 flex items-center gap-0.5 rounded-b-lg px-2 py-1 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto max-sm:group-active:opacity-100 max-sm:group-active:pointer-events-auto"
 		>
 			<!-- Pin: filled when pinned, outline when not -->
 			<button data-card-action class="icon-btn h-7 w-7 p-1.5" title="Pin note" onclick={(e) => { e.stopPropagation(); togglePin(); }} aria-label="Pin">
