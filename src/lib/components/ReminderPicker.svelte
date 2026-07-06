@@ -52,8 +52,13 @@
 		return 'unsaved' as const;
 	});
 
-	const showSaveCancel = $derived(uiStatus !== 'active');
 	const showRemove = $derived(reminder != null);
+	const primaryIsSave = $derived(uiStatus !== 'active');
+
+	function primaryAction() {
+		if (primaryIsSave) save();
+		else onClose();
+	}
 
 	// Time spinner
 	const hours24 = $derived(selected.getHours());
@@ -182,41 +187,26 @@
 		</div>
 	</div>
 
-	{#if showSaveCancel || showRemove}
-		<div
-			class="flex items-center gap-3 border-t border-[var(--gkc-border)] pt-4 {showSaveCancel && showRemove
-				? 'justify-between'
-				: showRemove
-					? 'justify-start'
-					: 'justify-end'}"
+	<div class="flex items-center justify-between gap-3 border-t border-[var(--gkc-border)] pt-4">
+		{#if showRemove}
+			<button
+				type="button"
+				onclick={clear}
+				class="shrink-0 rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--gkc-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
+			>
+				Remove
+			</button>
+		{:else}
+			<span class="shrink-0" aria-hidden="true"></span>
+		{/if}
+		<button
+			type="button"
+			onclick={primaryAction}
+			class="min-w-[7.5rem] shrink-0 rounded-lg px-6 py-2.5 text-sm font-medium {primaryIsSave
+				? 'bg-blue-600 text-white hover:bg-blue-700'
+				: 'border border-[var(--gkc-border)] bg-[var(--gkc-bg)] text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10'}"
 		>
-			{#if showRemove}
-				<button
-					type="button"
-					onclick={clear}
-					class="shrink-0 rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--gkc-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
-				>
-					Remove
-				</button>
-			{/if}
-			{#if showSaveCancel}
-				<div class="flex min-w-[11rem] flex-1 justify-end gap-2 sm:max-w-[13rem]">
-					<button
-						type="button"
-						onclick={() => onClose()}
-						class="flex-1 rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-bg)] py-2.5 text-sm font-medium text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
-					>
-						Cancel
-					</button>
-					<button
-						type="button"
-						onclick={save}
-						class="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
-					>
-						Save
-					</button>
-				</div>
-			{/if}
-		</div>
-	{/if}
+			{primaryIsSave ? 'Save' : 'Cancel'}
+		</button>
+	</div>
 </div>
