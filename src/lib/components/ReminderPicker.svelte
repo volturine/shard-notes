@@ -43,7 +43,16 @@
 	}
 
 	const willSaveLabel = $derived(formatFull(selected));
-	const isActive = $derived(reminder != null);
+	const draftMs = $derived(selected.getTime());
+
+	/** off = no reminder on note; active = saved & unchanged; unsaved = edits or new before Save */
+	const uiStatus = $derived.by(() => {
+		if (reminder == null) return 'new' as const;
+		if (draftMs === reminder) return 'active' as const;
+		return 'unsaved' as const;
+	});
+
+	const savedLabel = $derived(reminder != null ? formatFull(new Date(reminder)) : '');
 
 	// Time spinner
 	const hours24 = $derived(selected.getHours());
@@ -83,23 +92,30 @@
 	<div class="mb-3 text-base font-medium text-[var(--gkc-text)]">Reminder</div>
 
 	<div
-		class="mb-4 rounded-xl border px-3 py-2.5 {isActive
+		class="mb-4 rounded-xl border px-3 py-2.5 {uiStatus === 'active'
 			? 'border-green-600/35 bg-green-600/10 dark:bg-green-500/15'
-			: 'border-[var(--gkc-border)] bg-[var(--gkc-bg)]'}"
+			: uiStatus === 'unsaved'
+				? 'border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/15'
+				: 'border-blue-500/35 bg-blue-500/10 dark:bg-blue-500/15'}"
 	>
 		<div class="flex items-center justify-between gap-2">
 			<div class="text-[10px] font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
 				Will remind you
 			</div>
-			{#if isActive}
+			{#if uiStatus === 'active'}
 				<span
 					class="shrink-0 rounded-full bg-green-600/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-800 dark:text-green-300"
 					>Active</span
 				>
+			{:else if uiStatus === 'unsaved'}
+				<span
+					class="shrink-0 rounded-full bg-amber-500/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900 dark:text-amber-200"
+					>Unsaved</span
+				>
 			{:else}
 				<span
-					class="shrink-0 rounded-full bg-black/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--gkc-text-muted)] dark:bg-white/10"
-					>Off</span
+					class="shrink-0 rounded-full bg-blue-600/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300"
+					>New</span
 				>
 			{/if}
 		</div>
@@ -107,6 +123,13 @@
 			<span class="shrink-0" aria-hidden="true">⏰</span>
 			<span>{willSaveLabel}</span>
 		</div>
+		{#if uiStatus === 'unsaved' && reminder != null}
+			<p class="mt-2 text-xs text-[var(--gkc-text-muted)]">
+				Saved on note: <span class="font-medium">{savedLabel}</span>
+			</p>
+		{:else if uiStatus === 'new'}
+			<p class="mt-2 text-xs text-[var(--gkc-text-muted)]">Tap Save to turn the reminder on.</p>
+		{/if}
 	</div>
 
 	<div class="mb-4 border-t border-[var(--gkc-border)] pt-4">
@@ -178,9 +201,11 @@
 		<button
 			type="button"
 			onclick={save}
-			class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700"
+			class="rounded-lg px-5 py-2 text-sm font-medium text-white {uiStatus === 'active'
+				? 'bg-blue-600/80 hover:bg-blue-600'
+				: 'bg-blue-600 hover:bg-blue-700 ring-2 ring-blue-400/50'}"
 		>
-			Save
+			{uiStatus === 'active' ? 'Save' : 'Save changes'}
 		</button>
 	</div>
 </div>
