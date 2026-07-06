@@ -179,24 +179,31 @@
 		</div>
 	</div>
 
-	<div class="flex items-center border-t border-[var(--gkc-border)] pt-4 {reminder != null ? 'justify-between' : 'justify-end'}">
+	<div class="border-t border-[var(--gkc-border)] pt-4">
 		{#if reminder != null}
 			<button
 				type="button"
 				onclick={clear}
-				class="rounded-lg px-3 py-2 text-sm text-[var(--gkc-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
+				class="mb-3 w-full rounded-lg py-2 text-sm text-[var(--gkc-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
 			>
-				Remove
+				Remove reminder
 			</button>
 		{/if}
-		<button
-			type="button"
-			onclick={save}
-			class="rounded-lg px-5 py-2 text-sm font-medium text-white {uiStatus === 'active'
-				? 'bg-blue-600/80 hover:bg-blue-600'
-				: 'bg-blue-600 hover:bg-blue-700 ring-2 ring-blue-400/50'}"
-		>
-			{uiStatus === 'active' ? 'Save' : 'Save changes'}
-		</button>
+		<div class="flex gap-2">
+			<button
+				type="button"
+				onclick={() => onClose()}
+				class="flex-1 rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-bg)] py-2.5 text-sm font-medium text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
+			>
+				Cancel
+			</button>
+			<button
+				type="button"
+				onclick={save}
+				class="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+			>
+				Save
+			</button>
+		</div>
 	</div>
 </div>
