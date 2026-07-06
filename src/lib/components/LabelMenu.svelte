@@ -10,7 +10,6 @@
 	} = $props();
 
 	let newName = $state('');
-	let container: HTMLElement | null = $state(null);
 
 	const note = $derived(notesStore.notes.find((n) => n.id === noteId));
 
@@ -26,19 +25,9 @@
 		newName = '';
 		if (label && note) notesStore.toggleLabel(noteId, label.id);
 	}
-
-	function handleWindowClick(e: MouseEvent) {
-		if (container && !container.contains(e.target as HTMLElement)) {
-			onClose();
-		}
-	}
 </script>
 
-<svelte:window onclick={handleWindowClick} />
-
-<div
-	bind:this={container}
-	class="w-64 rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-3 shadow-xl"
+<div	class="w-64 rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-3 shadow-xl"
 >
 	<div class="mb-2 text-sm font-medium text-[var(--gkc-text)]">Label as</div>
 

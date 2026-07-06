@@ -8,7 +8,6 @@
 	import ColorPalette from './ColorPalette.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
 	import LabelMenu from './LabelMenu.svelte';
-	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 
 	let {
 		noteId = $bindable(),
@@ -26,6 +25,7 @@
 	let paletteOpen = $state(false);
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
+	let copyFlash = $state(false);
 
 	let syncedId: string | null = null;
 	$effect(() => {
@@ -72,15 +72,36 @@
 		onClose();
 	}
 
-	function copyText() {
+	async function copyText() {
 		if (!note) return;
-		navigator.clipboard?.writeText(noteToPlainText({ ...note, title, body })).catch(() => {});
+		const text = noteToPlainText({ ...note, title, body });
+		try {
+			await navigator.clipboard.writeText(text);
+		} catch {
+			// fallback for iOS Safari without clipboard API
+			const ta = document.createElement('textarea');
+			ta.value = text;
+			ta.style.position = 'fixed';
+			ta.style.opacity = '0';
+			document.body.appendChild(ta);
+			ta.select();
+			try { document.execCommand('copy'); } catch {}
+			document.body.removeChild(ta);
+		}
+		copyFlash = true;
+		setTimeout(() => { copyFlash = false; }, 1500);
+	}
+
+	function closePopups() {
+		paletteOpen = false;
+		reminderOpen = false;
+		labelOpen = false;
 	}
 </script>
 
 {#if isOpen && note}
 	<div
-		class="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-16"
+		class="fixed inset-0 z-50 flex items-start justify-center bg-black/40"
 		role="presentation"
 		onclick={(e) => {
 			if (e.target === e.currentTarget) close();
@@ -90,7 +111,7 @@
 		}}
 	>
 		<div
-			class="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-lg shadow-2xl"
+			class="flex h-full w-full max-w-2xl flex-col overflow-hidden shadow-2xl sm:h-[92vh] sm:rounded-lg sm:mt-2"
 			style="background-color: {bgColor(note.color)};"
 			role="dialog"
 			aria-modal="true"
@@ -120,6 +141,7 @@
 			</div>
 
 			<div class="relative flex shrink-0 items-center gap-0.5 border-t border-black/5 px-2 py-1.5 dark:border-white/10">
+				<!-- Pin: filled when pinned, outline when not -->
 				<button
 					type="button"
 					class="icon-btn h-8 w-8 p-2"
@@ -127,11 +149,9 @@
 					onclick={() => commit({ pinned: !note.pinned })}
 					aria-label="Pin"
 				>
-					{#if note.pinned}
-						<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M14 4l6 6-3 1-2 5-2-2-3 3-1-1 3-3-2-2 5-2z"/></svg>
-					{:else}
-						<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="2"><path d="M16 4v5l3 3v5l-5-2-5 2v-5l3-3V4h4M8 2v6L4 12v6h16v-6l-4-4V2"/></svg>
-					{/if}
+					<svg viewBox="0 0 24 24" class="h-4 w-4 {note.pinned ? 'fill-current' : 'fill-none stroke-current'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M14 2l8 8-4 1-3 7-3-3-4 4-1-1 4-4-3-3 7-3z" fill="{note.pinned ? 'currentColor' : 'none'}" stroke="{note.pinned ? 'none' : 'currentColor'}"/>
+					</svg>
 				</button>
 
 				<div class="relative">
@@ -139,8 +159,8 @@
 						<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c1.4 0 2-1 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1 .9-1.8 2-1.8h2c2.2 0 4-1.8 4-4 0-4.4-4.5-7.7-9-7.7zm-5 10c-.8 0-1.5-.7-1.5-1.5S6.2 9 7 9s1.5.7 1.5 1.5S7.8 12 7 12zm3-4c-.8 0-1.5-.7-1.5-1.5S9.2 5 10 5s1.5.7 1.5 1.5S10.8 8 10 8zm4 0c-.8 0-1.5-.7-1.5-1.5S13.2 5 14 5s1.5.7 1.5 1.5S14.8 8 14 8zm3 4c-.8 0-1.5-.7-1.5-1.5S16.2 9 17 9s1.5.7 1.5 1.5S17.8 12 17 12z"/></svg>
 					</button>
 					{#if paletteOpen}
-						<div class="absolute bottom-9 left-0 z-20">
-							<ColorPalette color={note.color} onSelect={(c) => commit({ color: c })} />
+						<div class="absolute bottom-10 left-0 z-20">
+							<ColorPalette color={note.color} onSelect={(c) => { commit({ color: c }); paletteOpen = false; }} />
 						</div>
 					{/if}
 				</div>
@@ -150,7 +170,7 @@
 						<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6V11c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5S10.5 3.17 10.5 4v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
 					</button>
 					{#if reminderOpen}
-						<div class="absolute bottom-9 left-0 z-30">
+						<div class="absolute bottom-10 left-0 z-30">
 							<ReminderPicker
 								reminder={note.reminder}
 								onApply={(r) => commit({ reminder: r })}
@@ -160,8 +180,13 @@
 					{/if}
 				</div>
 
-				<button type="button" class="icon-btn h-8 w-8 p-2" title="Copy" onclick={copyText} aria-label="Copy">
-					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+				<!-- Copy with feedback -->
+				<button type="button" class="icon-btn h-8 w-8 p-2 relative" title="Copy" onclick={copyText} aria-label="Copy">
+					{#if copyFlash}
+						<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current text-green-500"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+					{:else}
+						<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+					{/if}
 				</button>
 
 				<div class="relative">
@@ -169,7 +194,9 @@
 						<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M20 12l-8 8-9-9V4h7l10 10zM5 6.5C5 5.7 5.7 5 6.5 5S8 5.7 8 6.5 7.3 8 6.5 8 5 7.3 5 6.5z"/></svg>
 					</button>
 					{#if labelOpen}
-						<div class="absolute bottom-9 right-0 z-30">
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<div class="fixed inset-0 z-40" onclick={() => { labelOpen = false; }} role="presentation"></div>
+						<div class="absolute bottom-10 right-0 z-50">
 							<LabelMenu noteId={note.id} onClose={() => { labelOpen = false; }} />
 						</div>
 					{/if}

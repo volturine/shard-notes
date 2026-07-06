@@ -25,6 +25,7 @@
 	let paletteOpen = $state(false);
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
+	let copyFlash = $state(false);
 
 	function bgColor(c: NoteColor): string {
 		return uiStore.effectiveDark ? KEEP_DARK_COLORS[c] : KEEP_COLORS[c];
@@ -46,8 +47,22 @@
 	function setReminder(ts: number | null) {
 		notesStore.setReminder(note.id, ts);
 	}
-	function copyText() {
-		navigator.clipboard?.writeText(noteToPlainText(note)).catch(() => {});
+	async function copyText() {
+		const text = noteToPlainText(note);
+		try {
+			await navigator.clipboard.writeText(text);
+		} catch {
+			const ta = document.createElement('textarea');
+			ta.value = text;
+			ta.style.position = 'fixed';
+			ta.style.opacity = '0';
+			document.body.appendChild(ta);
+			ta.select();
+			try { document.execCommand('copy'); } catch {}
+			document.body.removeChild(ta);
+		}
+		copyFlash = true;
+		setTimeout(() => { copyFlash = false; }, 1500);
 	}
 
 	function openUnlessAction(e: MouseEvent) {
@@ -111,7 +126,6 @@
 	function onTouchEnd(e: TouchEvent) {
 		if (!dragging) return;
 		dragging = false;
-		const elapsed = Date.now() - startTime;
 
 		if (Math.abs(offsetX) >= SWIPE_THRESHOLD) {
 			if (offsetX < 0) {
@@ -165,9 +179,9 @@
 			<NoteBodyDisplay {note} clamp={true} />
 		</div>
 
-		<!-- Labels chips — at the bottom of the card -->
+		<!-- Labels chips — above the action bar, near bottom -->
 		{#if labelsForNote.length}
-			<div class="flex flex-wrap gap-1 px-3 pb-2 pt-1">
+			<div class="flex flex-wrap gap-1 px-3 pb-1 pt-1">
 				{#each labelsForNote as label (label.id)}
 					<span
 						class="rounded px-1.5 py-0.5 text-[10px] font-medium bg-black/5 text-[var(--gkc-text-muted)] dark:bg-white/10"
@@ -181,14 +195,13 @@
 		<!-- Footer actions — hover/touch overlay -->
 		<div
 			data-card-action
-			class="flex items-center gap-0.5 px-2 py-1 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+			class="flex items-center gap-0.5 px-2 py-1 opacity-60 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto"
 		>
+			<!-- Pin: filled when pinned, outline when not -->
 			<button data-card-action class="icon-btn h-7 w-7 p-1.5" title="Pin note" onclick={(e) => { e.stopPropagation(); togglePin(); }} aria-label="Pin">
-				{#if note.pinned}
-					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M14 4l6 6-3 1-2 5-2-2-3 3-1-1 3-3-2-2 5-2z"/></svg>
-				{:else}
-					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="2"><path d="M16 4v5l3 3v5l-5-2-5 2v-5l3-3V4h4M8 2v6L4 12v6h16v-6l-4-4V2"/></svg>
-				{/if}
+				<svg viewBox="0 0 24 24" class="h-4 w-4 {note.pinned ? 'fill-current' : 'fill-none stroke-current'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M14 2l8 8-4 1-3 7-3-3-4 4-1-1 4-4-3-3 7-3z" fill="{note.pinned ? 'currentColor' : 'none'}" stroke="{note.pinned ? 'none' : 'currentColor'}"/>
+				</svg>
 			</button>
 
 			<div class="relative" data-card-action>
@@ -202,7 +215,9 @@
 					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c1.4 0 2-1 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1 .9-1.8 2-1.8h2c2.2 0 4-1.8 4-4 0-4.4-4.5-7.7-9-7.7zm-5 10c-.8 0-1.5-.7-1.5-1.5S6.2 9 7 9s1.5.7 1.5 1.5S7.8 12 7 12zm3-4c-.8 0-1.5-.7-1.5-1.5S9.2 5 10 5s1.5.7 1.5 1.5S10.8 8 10 8zm4 0c-.8 0-1.5-.7-1.5-1.5S13.2 5 14 5s1.5.7 1.5 1.5S14.8 8 14 8zm3 4c-.8 0-1.5-.7-1.5-1.5S16.2 9 17 9s1.5.7 1.5 1.5S17.8 12 17 12z"/></svg>
 				</button>
 				{#if paletteOpen}
-					<div transition:fade={{ duration: 100 }} class="absolute left-0 bottom-9 z-20">
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<div class="fixed inset-0 z-40" onclick={() => { paletteOpen = false; }} role="presentation"></div>
+					<div transition:fade={{ duration: 100 }} class="absolute left-0 bottom-9 z-50">
 						<ColorPalette color={note.color} onSelect={setColor} />
 					</div>
 				{/if}
@@ -219,7 +234,9 @@
 					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6V11c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5S10.5 3.17 10.5 4v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
 				</button>
 				{#if reminderOpen}
-					<div transition:fade={{ duration: 100 }} class="absolute left-0 bottom-9 z-30">
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<div class="fixed inset-0 z-40" onclick={() => { reminderOpen = false; }} role="presentation"></div>
+					<div transition:fade={{ duration: 100 }} class="absolute left-0 bottom-9 z-50">
 						<ReminderPicker
 							reminder={note.reminder}
 							onApply={(r) => setReminder(r)}
@@ -229,8 +246,12 @@
 				{/if}
 			</div>
 
-			<button data-card-action class="icon-btn h-7 w-7 p-1.5" title="Copy" onclick={(e) => { e.stopPropagation(); copyText(); }} aria-label="Copy">
-				<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+			<button data-card-action class="icon-btn h-7 w-7 p-1.5 relative" title="Copy" onclick={(e) => { e.stopPropagation(); copyText(); }} aria-label="Copy">
+				{#if copyFlash}
+					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current text-green-500"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+				{:else}
+					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+				{/if}
 			</button>
 
 			<div class="relative" data-card-action>
@@ -244,7 +265,9 @@
 					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M20 12l-8 8-9-9V4h7l10 10zM5 6.5C5 5.7 5.7 5 6.5 5S8 5.7 8 6.5 7.3 8 6.5 8 5 7.3 5 6.5z"/></svg>
 				</button>
 				{#if labelOpen}
-					<div transition:fade={{ duration: 100 }} class="absolute right-0 bottom-9 z-30">
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<div class="fixed inset-0 z-40" onclick={() => { labelOpen = false; }} role="presentation"></div>
+					<div transition:fade={{ duration: 100 }} class="absolute right-0 bottom-9 z-50">
 						<LabelMenu noteId={note.id} onClose={() => { labelOpen = false; }} />
 					</div>
 				{/if}
