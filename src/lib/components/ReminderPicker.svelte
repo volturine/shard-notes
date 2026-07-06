@@ -126,51 +126,58 @@
 			</button>
 		</div>
 
-		<!-- Time spinner: hour / minute / ampm -->
-		<div class="flex items-center justify-center gap-2">
-			<!-- Hour -->
+		<!-- Time spinner: hour : minute AM/PM — colon & AM aligned to digit row -->
+		<div class="flex justify-center gap-1">
 			<div class="flex flex-col items-center">
-				<button type="button" class="icon-btn h-8 w-10" onclick={() => shiftHour(1)} aria-label="Hour up">
+				<button type="button" class="icon-btn h-8 w-11 shrink-0" onclick={() => shiftHour(1)} aria-label="Hour up">
 					<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M7 14l5-5 5 5z"/></svg>
 				</button>
-				<div class="my-1 w-12 rounded-lg bg-[var(--gkc-bg)] py-2 text-center text-xl font-semibold tabular-nums text-[var(--gkc-text)]">
+				<div class="flex h-11 w-12 items-center justify-center rounded-lg bg-[var(--gkc-bg)] text-xl font-semibold tabular-nums text-[var(--gkc-text)]">
 					{String(displayHour).padStart(2, '0')}
 				</div>
-				<button type="button" class="icon-btn h-8 w-10" onclick={() => shiftHour(-1)} aria-label="Hour down">
+				<button type="button" class="icon-btn h-8 w-11 shrink-0" onclick={() => shiftHour(-1)} aria-label="Hour down">
 					<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M7 10l5 5 5-5z"/></svg>
 				</button>
 			</div>
 
-			<div class="pb-6 text-xl font-semibold text-[var(--gkc-text)]">:</div>
+			<div class="flex h-[4.75rem] w-4 shrink-0 items-center justify-center self-center pt-1 text-xl font-semibold leading-none text-[var(--gkc-text)]">
+				:
+			</div>
 
-			<!-- Minute -->
 			<div class="flex flex-col items-center">
-				<button type="button" class="icon-btn h-8 w-10" onclick={() => shiftMinute(15)} aria-label="Minute up">
+				<button type="button" class="icon-btn h-8 w-11 shrink-0" onclick={() => shiftMinute(15)} aria-label="Minute up">
 					<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M7 14l5-5 5 5z"/></svg>
 				</button>
-				<div class="my-1 w-12 rounded-lg bg-[var(--gkc-bg)] py-2 text-center text-xl font-semibold tabular-nums text-[var(--gkc-text)]">
+				<div class="flex h-11 w-12 items-center justify-center rounded-lg bg-[var(--gkc-bg)] text-xl font-semibold tabular-nums text-[var(--gkc-text)]">
 					{String(minutes).padStart(2, '0')}
 				</div>
-				<button type="button" class="icon-btn h-8 w-10" onclick={() => shiftMinute(-15)} aria-label="Minute down">
+				<button type="button" class="icon-btn h-8 w-11 shrink-0" onclick={() => shiftMinute(-15)} aria-label="Minute down">
 					<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M7 10l5 5 5-5z"/></svg>
 				</button>
 			</div>
 
-			<!-- AM/PM -->
-			<button type="button" class="mb-6 ml-2 rounded-lg bg-[var(--gkc-bg)] px-3 py-2 text-sm font-semibold text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10" onclick={toggleAmPm}>
-				{ampm}
-			</button>
+			<div class="flex h-[4.75rem] shrink-0 items-center justify-center self-center pt-1">
+				<button
+					type="button"
+					class="rounded-lg bg-[var(--gkc-bg)] px-3 py-2.5 text-sm font-semibold text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
+					onclick={toggleAmPm}
+				>
+					{ampm}
+				</button>
+			</div>
 		</div>
 	</div>
 
-	<div class="flex items-center justify-between border-t border-[var(--gkc-border)] pt-4">
-		<button
-			type="button"
-			onclick={clear}
-			class="rounded-lg px-3 py-2 text-sm text-[var(--gkc-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
-		>
-			Remove
-		</button>
+	<div class="flex items-center border-t border-[var(--gkc-border)] pt-4 {reminder != null ? 'justify-between' : 'justify-end'}">
+		{#if reminder != null}
+			<button
+				type="button"
+				onclick={clear}
+				class="rounded-lg px-3 py-2 text-sm text-[var(--gkc-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
+			>
+				Remove
+			</button>
+		{/if}
 		<button
 			type="button"
 			onclick={save}

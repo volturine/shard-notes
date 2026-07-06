@@ -104,7 +104,7 @@
 		}}
 	>
 		<div
-			class="flex max-h-[95vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl"
+			class="flex h-[85vh] max-h-[95vh] min-h-[70vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl"
 			style="background-color: {bgColor(note.color)};"
 			role="dialog"
 			aria-modal="true"
@@ -116,7 +116,7 @@
 				</div>
 			{/if}
 
-			<div class="flex-1 overflow-y-auto px-6 pt-5">
+			<div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-5 pb-3">
 				<input
 					type="text"
 					placeholder="Title"
@@ -129,7 +129,7 @@
 					placeholder="Take a note… Use [ ] or [] for checklist lines"
 					bind:value={body}
 					oninput={scheduleCommit}
-					class="min-h-[200px] w-full resize-none bg-transparent text-sm leading-relaxed text-[var(--gkc-text)] placeholder:text-[var(--gkc-text-muted)] outline-none"
+					class="min-h-[50vh] w-full flex-1 resize-none bg-transparent text-sm leading-relaxed text-[var(--gkc-text)] placeholder:text-[var(--gkc-text-muted)] outline-none"
 				></textarea>
 			</div>
 

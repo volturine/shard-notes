@@ -73,40 +73,43 @@ body {
 	-webkit-overflow-scrolling: touch;
 }
 
-/* Note grid — flex-wrap masonry (more stable than CSS columns on mobile). */
+/* Note grid — column masonry in grid mode (cards pack up columns); list = single column. */
 .masonry {
 	width: 100%;
 }
 
 .masonry-grid {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 10px;
+	column-gap: 10px;
 	padding: 0 12px;
+	column-count: 2;
 }
 
 .masonry-grid > * {
-	width: calc(50% - 5px);
+	break-inside: avoid;
+	-webkit-column-break-inside: avoid;
+	page-break-inside: avoid;
+	margin-bottom: 10px;
+	width: 100%;
+	display: block;
+	box-sizing: border-box;
 }
 
 @media (min-width: 600px) {
-	.masonry-grid > * {
-		width: calc(33.333% - 7px);
+	.masonry-grid {
+		column-count: 3;
 	}
 }
 
 @media (min-width: 768px) {
 	.masonry-grid {
+		column-count: 4;
 		padding: 0 24px;
-	}
-	.masonry-grid > * {
-		width: calc(25% - 8px);
 	}
 }
 
 @media (min-width: 1100px) {
-	.masonry-grid > * {
-		width: calc(20% - 8px);
+	.masonry-grid {
+		column-count: 5;
 	}
 }
 
