@@ -195,7 +195,7 @@
 		<!-- Footer actions — hover/touch overlay -->
 		<div
 			data-card-action
-			class="flex items-center gap-0.5 px-2 py-1 opacity-60 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto"
+			class="flex items-center gap-0.5 px-2 py-1 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto"
 		>
 			<!-- Pin: filled when pinned, outline when not -->
 			<button data-card-action class="icon-btn h-7 w-7 p-1.5" title="Pin note" onclick={(e) => { e.stopPropagation(); togglePin(); }} aria-label="Pin">

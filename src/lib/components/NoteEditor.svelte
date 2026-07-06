@@ -101,7 +101,7 @@
 
 {#if isOpen && note}
 	<div
-		class="fixed inset-0 z-50 flex items-start justify-center bg-black/40"
+		class="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-4 sm:pt-10"
 		role="presentation"
 		onclick={(e) => {
 			if (e.target === e.currentTarget) close();
@@ -111,7 +111,7 @@
 		}}
 	>
 		<div
-			class="flex h-full w-full max-w-2xl flex-col overflow-hidden shadow-2xl sm:h-[92vh] sm:rounded-lg sm:mt-2"
+			class="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-lg shadow-2xl"
 			style="background-color: {bgColor(note.color)};"
 			role="dialog"
 			aria-modal="true"
