@@ -163,6 +163,8 @@ body {
 	justify-content: center;
 	border-radius: 9999px;
 	transition: background-color 120ms ease, color 120ms ease;
+	touch-action: manipulation;
+	-webkit-tap-highlight-color: transparent;
 }
 .icon-btn:hover {
 	background-color: rgba(0, 0, 0, 0.07);

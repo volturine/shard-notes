@@ -8,6 +8,7 @@
 
 import { openDB, type IDBPDatabase } from 'idb';
 import type { Note, Label } from '$lib/types';
+import { noteForLocalStorage } from '$lib/noteStorage';
 
 const DB_NAME = 'google-keep-clone';
 const DB_VERSION = 1;
@@ -57,9 +58,19 @@ function lsWrite<T>(key: string, items: T[]): void {
 	if (typeof localStorage === 'undefined') return;
 	try {
 		localStorage.setItem(key, JSON.stringify(items));
-	} catch {
-		/* quota / private mode — best effort */
+	} catch (err) {
+		console.error('[idb] lsWrite failed (quota?):', key, err);
 	}
+}
+
+function lsUpsertNote(note: Note): Note[] {
+	const items = lsRead<Note>(LS_NOTES_KEY);
+	const light = noteForLocalStorage(note) as Note;
+	const idx = items.findIndex((x) => x.id === note.id);
+	if (idx >= 0) items[idx] = light;
+	else items.push(light);
+	lsWrite(LS_NOTES_KEY, items);
+	return items;
 }
 
 function lsUpsert<T extends { id: string }>(key: string, item: T): T[] {
@@ -85,8 +96,10 @@ export async function getAllNotes(): Promise<Note[]> {
 			const db = await getDB();
 			const fromDB = (await db.getAll(NOTES_STORE)) as Note[];
 			if (fromDB.length > 0) {
-				// Mirror to localStorage so the fallback stays warm.
-				lsWrite(LS_NOTES_KEY, fromDB);
+				lsWrite(
+					LS_NOTES_KEY,
+					fromDB.map((n) => noteForLocalStorage(n) as Note)
+				);
 				return fromDB;
 			}
 		} catch {
@@ -98,15 +111,13 @@ export async function getAllNotes(): Promise<Note[]> {
 }
 
 export async function putNote(note: Note): Promise<void> {
-	// Always write to localStorage (reliable on iOS).
-	lsUpsert(LS_NOTES_KEY, note);
-	// Best-effort write to IDB.
+	lsUpsertNote(note);
 	if (dbAvailable) {
 		try {
 			const db = await getDB();
 			await db.put(NOTES_STORE, note);
-		} catch {
-			/* IDB unavailable — localStorage has it */
+		} catch (err) {
+			console.error('[idb] putNote IDB failed:', note.id, err);
 		}
 	}
 }
@@ -166,7 +177,7 @@ export async function deleteLabel(id: string): Promise<void> {
 
 // --- Bulk ops (used by import/export) ---
 export async function bulkPutNotes(notes: Note[]): Promise<void> {
-	lsWrite(LS_NOTES_KEY, notes);
+	lsWrite(LS_NOTES_KEY, notes.map((n) => noteForLocalStorage(n) as Note));
 	if (dbAvailable) {
 		try {
 			const db = await getDB();

@@ -16,6 +16,7 @@ import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { effectiveBody, toggleLineAt } from '$lib/checklistBody';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { finishSyncCloudIndicator } from '$lib/syncCloudIndicator';
+import { noteForLocalStorage, stripMirrorPayload, clearOversizedNoteStorage } from '$lib/noteStorage';
 
 const SAVE_DEBOUNCE_MS = 250;
 
@@ -33,14 +34,33 @@ export class NotesStore {
 	// appear instantly with no async gap / flicker.
 	constructor() {
 		if (typeof localStorage === 'undefined') return;
+		clearOversizedNoteStorage();
 		try {
 			const mNotes = localStorage.getItem(LS_NOTES_MIRROR);
-			if (mNotes) this.notes = JSON.parse(mNotes);
+			if (mNotes) {
+				const parsed = stripMirrorPayload(mNotes);
+				if (parsed === null) {
+					console.warn('[notes] Clearing corrupt/oversized notes mirror');
+					localStorage.removeItem(LS_NOTES_MIRROR);
+				} else {
+					this.notes = parsed;
+				}
+			}
 			const mLabels = localStorage.getItem(LS_LABELS_MIRROR);
-			if (mLabels) this.labels = JSON.parse(mLabels);
-			// If we loaded from localStorage, mark as loaded so init() doesn't re-seed.
+			if (mLabels) {
+				try {
+					this.labels = JSON.parse(mLabels) as Label[];
+				} catch {
+					localStorage.removeItem(LS_LABELS_MIRROR);
+				}
+			}
 			if (this.notes.length > 0) this.loaded = true;
-		} catch {}
+		} catch (err) {
+			console.error('[notes] constructor LS load:', err);
+			try {
+				localStorage.removeItem(LS_NOTES_MIRROR);
+			} catch {}
+		}
 	}
 
 	// Derived collections -------------------------------------------------
@@ -57,9 +77,13 @@ export class NotesStore {
 
 	// --- Lifecycle -------------------------------------------------------
 	async init() {
-		if (this.loaded) return;
+		if (this.loaded) {
+			await this.hydrateImagesFromIDB();
+			return;
+		}
 		if (this.notes.length > 0) {
 			this.loaded = true;
+			await this.hydrateImagesFromIDB();
 			return;
 		}
 
@@ -70,7 +94,10 @@ export class NotesStore {
 		if (typeof localStorage !== "undefined") {
 			try {
 				const mNotes = localStorage.getItem(LS_NOTES_MIRROR);
-				if (mNotes) notes = JSON.parse(mNotes) as Note[];
+				if (mNotes) {
+					const parsed = stripMirrorPayload(mNotes);
+					if (parsed) notes = parsed;
+				}
 				const mLabels = localStorage.getItem(LS_LABELS_MIRROR);
 				if (mLabels) labels = JSON.parse(mLabels) as Label[];
 			} catch {}
@@ -99,6 +126,27 @@ export class NotesStore {
 		}
 		this.purgeOldTrash();
 		this.loaded = true;
+		await this.hydrateImagesFromIDB();
+	}
+
+	private async hydrateImagesFromIDB() {
+		try {
+			const dbNotes = await getAllNotes();
+			if (!dbNotes.length) return;
+			const byId = new Map(dbNotes.map((n) => [n.id, n]));
+			let changed = false;
+			const merged = this.notes.map((n) => {
+				const db = byId.get(n.id);
+				if (db?.images?.length) {
+					changed = true;
+					return { ...n, images: db.images };
+				}
+				return n;
+			});
+			if (changed) this.notes = merged;
+		} catch (err) {
+			console.error('[notes] hydrateImagesFromIDB:', err);
+		}
 	}
 
 	/** Remove notes that have been in trash > 7 days. */
@@ -329,7 +377,10 @@ export class NotesStore {
 		if (typeof localStorage !== "undefined") {
 			try {
 				const mNotes = localStorage.getItem(LS_NOTES_MIRROR);
-				if (mNotes) notes = JSON.parse(mNotes) as Note[];
+				if (mNotes) {
+					const parsed = stripMirrorPayload(mNotes);
+					if (parsed) notes = parsed;
+				}
 				const mLabels = localStorage.getItem(LS_LABELS_MIRROR);
 				if (mLabels) labels = JSON.parse(mLabels) as Label[];
 			} catch {}
@@ -364,7 +415,7 @@ export class NotesStore {
 	private mirrorToLS() {
 		if (typeof localStorage === 'undefined') return;
 		try {
-			const notesSnapshot = JSON.parse(JSON.stringify(this.notes));
+			const notesSnapshot = this.notes.map((n) => noteForLocalStorage(n));
 			const labelsSnapshot = JSON.parse(JSON.stringify(this.labels));
 			localStorage.setItem(LS_NOTES_MIRROR, JSON.stringify(notesSnapshot));
 			localStorage.setItem(LS_LABELS_MIRROR, JSON.stringify(labelsSnapshot));
@@ -380,7 +431,6 @@ export class NotesStore {
 	private persist(id: string) {
 		const n = this.notes.find((x) => x.id === id);
 		if (!n) return;
-		// Best-effort write to IDB.
 		putNote(n).catch((err) => console.error('[notes] putNote error:', err));
 		// Debounce the localStorage mirror.
 		if (this.mirrorTimer) clearTimeout(this.mirrorTimer);

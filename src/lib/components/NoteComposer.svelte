@@ -2,26 +2,23 @@
 	import { fly } from 'svelte/transition';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { uid } from '$lib/utils';
-	import type { ChecklistItem, NoteColor } from '$lib/types';
+	import type { NoteColor, NoteImage } from '$lib/types';
 	import { KEEP_COLORS, KEEP_DARK_COLORS } from '$lib/types';
+	import NoteEditorFooter from './NoteEditorFooter.svelte';
+	import ColorPalette from './ColorPalette.svelte';
+	import LabelMenu from './LabelMenu.svelte';
 
-	let titleEl: HTMLInputElement | null = $state(null);
 	let bodyEl: HTMLTextAreaElement | null = $state(null);
-	let itemInputEl: HTMLInputElement | null = $state(null);
 
 	let expanded = $state(false);
 	let title = $state('');
 	let body = $state('');
-	let kind = $state<'text' | 'list'>('text');
 	let color = $state<NoteColor>('default');
+	let images = $state<NoteImage[]>([]);
+	let draftId = $state<string | null>(null);
 	let paletteOpen = $state(false);
-	let items = $state<ChecklistItem[]>([]);
+	let labelOpen = $state(false);
 
-	// Native drag reordering of items in the composer.
-	let dragId: string | null = null;
-
-	// Auto-expand when the global composer-focus signal is set.
 	$effect(() => {
 		if (uiStore.composerFocused) {
 			expanded = true;
@@ -34,80 +31,101 @@
 		return uiStore.effectiveDark ? KEEP_DARK_COLORS[c] : KEEP_COLORS[c];
 	}
 
-	function reset() {
-		expanded = false;
-		title = '';
-		body = '';
-		kind = 'text';
-		color = 'default';
-		paletteOpen = false;
-		items = [];
+	function hasContent(): boolean {
+		return !!(title.trim() || body.trim() || images.length > 0);
 	}
 
-	function save() {
-		const hasContent = title.trim() || body.trim();
-		if (!hasContent) {
-			reset();
-			return;
-		}
-		notesStore.createNote({
+	function ensureDraft(): string {
+		if (draftId) return draftId;
+		const n = notesStore.createNote({
 			title: title.trim(),
 			body: body.trim(),
 			items: [],
 			kind: 'text',
-			color
+			color,
+			images: [...images]
 		});
-		reset();
+		draftId = n.id;
+		return n.id;
 	}
 
-	function addItem() {
-		if (!itemInputEl) return;
-		const text = itemInputEl.value.trim();
-		if (!text) return;
-		items = [...items, { id: uid(), text, checked: false }];
-		itemInputEl.value = '';
-		itemInputEl.focus();
+	function syncDraft() {
+		if (!draftId) return;
+		notesStore.updateNote(draftId, {
+			title: title.trim(),
+			body: body.trim(),
+			color,
+			images: [...images],
+			items: [],
+			kind: 'text'
+		});
 	}
 
-	function removeItem(id: string) {
-		items = items.filter((i) => i.id !== id);
+	let syncTimer: ReturnType<typeof setTimeout> | null = null;
+	function scheduleSync() {
+		if (!draftId && !hasContent()) return;
+		if (syncTimer) clearTimeout(syncTimer);
+		syncTimer = setTimeout(() => {
+			if (!hasContent()) return;
+			ensureDraft();
+			syncDraft();
+		}, 300);
 	}
 
-	function toggleItem(id: string) {
-		items = items.map((i) => (i.id === id ? { ...i, checked: !i.checked } : i));
-	}
-
-	function toggleKind() {
-		kind = kind === 'text' ? 'list' : 'text';
-		// Move existing text body into a first checklist item when switching to list.
-		if (kind === 'list' && body.trim() && items.length === 0) {
-			items = [{ id: uid(), text: body.trim(), checked: false }];
-			body = '';
-		} else if (kind === 'text' && items.length > 0 && !body.trim()) {
-			body = items.map((i) => i.text).join('\n');
-			items = [];
+	function reset() {
+		if (syncTimer) clearTimeout(syncTimer);
+		if (draftId) {
+			const n = notesStore.notes.find((x) => x.id === draftId);
+			const empty = !n?.title?.trim() && !n?.body?.trim() && !(n?.images?.length);
+			if (empty) notesStore.trashNote(draftId);
 		}
+		expanded = false;
+		title = '';
+		body = '';
+		color = 'default';
+		images = [];
+		draftId = null;
+		paletteOpen = false;
+		labelOpen = false;
 	}
 
-	function onDragStart(e: DragEvent, id: string) {
-		dragId = id;
-	}
-	function onDrop(e: DragEvent, targetId: string) {
-		e.preventDefault();
-		const fromId = dragId;
-		dragId = null;
-		if (!fromId || fromId === targetId) return;
-		const fromIdx = items.findIndex((i) => i.id === fromId);
-		const toIdx = items.findIndex((i) => i.id === targetId);
-		if (fromIdx === -1 || toIdx === -1) return;
-		const copy = [...items];
-		const [moved] = copy.splice(fromIdx, 1);
-		copy.splice(toIdx, 0, moved);
-		items = copy;
+	function closeAndSave() {
+		if (syncTimer) clearTimeout(syncTimer);
+		if (hasContent()) {
+			if (draftId) syncDraft();
+			else {
+				notesStore.createNote({
+					title: title.trim(),
+					body: body.trim(),
+					items: [],
+					kind: 'text',
+					color,
+					images: [...images]
+				});
+			}
+		} else if (draftId) {
+			notesStore.trashNote(draftId);
+		}
+		title = '';
+		body = '';
+		color = 'default';
+		images = [];
+		draftId = null;
+		expanded = false;
+		paletteOpen = false;
+		labelOpen = false;
 	}
 
-	function collapsethenSave() {
-		save();
+	function onImagesChange() {
+		if (!hasContent()) return;
+		ensureDraft();
+		syncDraft();
+	}
+
+	function openTags() {
+		if (!hasContent()) return;
+		ensureDraft();
+		labelOpen = true;
 	}
 </script>
 
@@ -117,60 +135,36 @@
 	style="background-color: {bgColor(color)}"
 >
 	{#if expanded}
-		<div transition:fly={{ y: -8, duration: 120 }}>
-			<div class="p-3">
-				{#if titleEl ?? false}
-				{/if}
+		<div transition:fly={{ y: -8, duration: 120 }} class="flex flex-col">
+			<div class="p-3 pb-0">
 				<input
-					bind:this={titleEl}
 					bind:value={title}
+					oninput={scheduleSync}
 					type="text"
 					placeholder="Title"
 					class="mb-2 w-full bg-transparent text-base font-medium text-[var(--gkc-text)] focus:outline-none placeholder:text-[var(--gkc-text-muted)]"
 				/>
-
 				<textarea
 					bind:this={bodyEl}
 					bind:value={body}
+					oninput={scheduleSync}
 					rows="3"
-					placeholder="Take a note… [ ] checklist lines"
-					class="w-full resize-none bg-transparent text-sm text-[var(--gkc-text)] focus:outline-none placeholder:text-[var(--gkc-text-muted)]"
+					placeholder="Take a note… [ ] checklist · ``` for code"
+					class="min-h-[6rem] w-full resize-none bg-transparent text-sm text-[var(--gkc-text)] focus:outline-none placeholder:text-[var(--gkc-text-muted)]"
 				></textarea>
 			</div>
 
-			<div class="relative flex items-center justify-between gap-2 pb-2 pl-3 pr-2">
-				<div class="flex items-center gap-1">
-					<!-- Color -->
-					<button
-						class="icon-btn h-9 w-9 p-2"
-						title="Color"
-						onclick={() => (paletteOpen = !paletteOpen)}
-						aria-label="Color"
-					>🎨</button>
-					{#if paletteOpen}
-						<div transition:fly={{ y: -4, duration: 100 }} class="absolute z-30 mt-1">
-							<div class="grid grid-cols-6 gap-1 rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-2 shadow-lg">
-								{#each Object.keys(KEEP_COLORS) as c (c)}
-									<button
-										type="button"
-										onclick={() => { color = c as NoteColor; paletteOpen = false; }}
-										class="h-6 w-6 rounded-full border border-black/10 dark:border-white/10"
-										style="background-color: {bgColor(c as NoteColor)}"
-										aria-label="Set color {c}"
-									></button>
-								{/each}
-							</div>
-						</div>
-					{/if}
-			</div>
-			<button
-					type="button"
-					onclick={collapsethenSave}
-					class="rounded px-3 py-1.5 text-sm font-medium text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
-				>
-					Close
-				</button>
-			</div>
+			<NoteEditorFooter
+				bind:images
+				bind:body
+				noteId={draftId}
+				showCopy={false}
+				showDelete={false}
+				onOpenColor={() => { paletteOpen = true; }}
+				onOpenTags={openTags}
+				onImagesChange={onImagesChange}
+				onClose={closeAndSave}
+			/>
 		</div>
 	{:else}
 		<button
@@ -179,9 +173,32 @@
 				expanded = true;
 				queueMicrotask(() => bodyEl?.focus());
 			}}
-			class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[var(--gkc-text-muted)]"
+			class="flex w-full touch-manipulation items-center gap-3 px-4 py-3 text-left text-sm text-[var(--gkc-text-muted)]"
 		>
 			<span>Take a note…</span>
 		</button>
 	{/if}
 </section>
+
+{#if paletteOpen}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div class="fixed inset-0 z-[60] bg-black/30" onclick={() => { paletteOpen = false; }} role="presentation"></div>
+	<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+		<ColorPalette
+			color={color}
+			onSelect={(c) => {
+				color = c;
+				if (draftId) notesStore.updateNote(draftId, { color: c });
+				paletteOpen = false;
+			}}
+		/>
+	</div>
+{/if}
+
+{#if labelOpen && draftId}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div class="fixed inset-0 z-[60] bg-black/30" onclick={() => { labelOpen = false; }} role="presentation"></div>
+	<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+		<LabelMenu noteId={draftId} onClose={() => { labelOpen = false; }} />
+	</div>
+{/if}
