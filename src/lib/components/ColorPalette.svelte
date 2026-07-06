@@ -15,18 +15,18 @@
 	}
 </script>
 
-<div class="grid grid-cols-6 gap-2 rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-2 shadow-xl">
+<div class="grid grid-cols-4 gap-3 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl">
 	{#each KEEP_COLOR_ORDER as c (c)}
 		<button
 			type="button"
 			onclick={() => onSelect(c)}
-			class="h-7 w-7 rounded-full border border-black/10 transition-transform hover:scale-110 dark:border-white/15"
+			class="h-10 w-10 rounded-full border-2 border-black/10 transition-transform hover:scale-110 dark:border-white/15"
 			style="background-color: {bgColor(c)}"
 			aria-label="Set color {c}"
 			title={c}
 		>
 			{#if c === color}
-				<span class="flex h-full w-full items-center justify-center text-xs text-black/60 dark:text-white/70">✓</span>
+				<span class="flex h-full w-full items-center justify-center text-sm text-black/60 dark:text-white/70">✓</span>
 			{/if}
 		</button>
 	{/each}

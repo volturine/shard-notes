@@ -214,13 +214,6 @@
 				>
 					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c1.4 0 2-1 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1 .9-1.8 2-1.8h2c2.2 0 4-1.8 4-4 0-4.4-4.5-7.7-9-7.7zm-5 10c-.8 0-1.5-.7-1.5-1.5S6.2 9 7 9s1.5.7 1.5 1.5S7.8 12 7 12zm3-4c-.8 0-1.5-.7-1.5-1.5S9.2 5 10 5s1.5.7 1.5 1.5S10.8 8 10 8zm4 0c-.8 0-1.5-.7-1.5-1.5S13.2 5 14 5s1.5.7 1.5 1.5S14.8 8 14 8zm3 4c-.8 0-1.5-.7-1.5-1.5S16.2 9 17 9s1.5.7 1.5 1.5S17.8 12 17 12z"/></svg>
 				</button>
-				{#if paletteOpen}
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<div class="fixed inset-0 z-40" onclick={() => { paletteOpen = false; }} role="presentation"></div>
-					<div transition:fade={{ duration: 100 }} class="absolute left-0 bottom-9 z-50">
-						<ColorPalette color={note.color} onSelect={setColor} />
-					</div>
-				{/if}
 			</div>
 
 			<div class="relative" data-card-action>
@@ -233,17 +226,6 @@
 				>
 					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6V11c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5S10.5 3.17 10.5 4v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
 				</button>
-				{#if reminderOpen}
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<div class="fixed inset-0 z-40" onclick={() => { reminderOpen = false; }} role="presentation"></div>
-					<div transition:fade={{ duration: 100 }} class="absolute left-0 bottom-9 z-50">
-						<ReminderPicker
-							reminder={note.reminder}
-							onApply={(r) => setReminder(r)}
-							onClose={() => { reminderOpen = false; }}
-						/>
-					</div>
-				{/if}
 			</div>
 
 			<button data-card-action class="icon-btn h-7 w-7 p-1.5 relative" title="Copy" onclick={(e) => { e.stopPropagation(); copyText(); }} aria-label="Copy">
@@ -264,13 +246,6 @@
 				>
 					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M20 12l-8 8-9-9V4h7l10 10zM5 6.5C5 5.7 5.7 5 6.5 5S8 5.7 8 6.5 7.3 8 6.5 8 5 7.3 5 6.5z"/></svg>
 				</button>
-				{#if labelOpen}
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<div class="fixed inset-0 z-40" onclick={() => { labelOpen = false; }} role="presentation"></div>
-					<div transition:fade={{ duration: 100 }} class="absolute right-0 bottom-9 z-50">
-						<LabelMenu noteId={note.id} onClose={() => { labelOpen = false; }} />
-					</div>
-				{/if}
 			</div>
 
 			<button data-card-action class="icon-btn h-7 w-7 p-1.5" title="Archive" onclick={(e) => { e.stopPropagation(); toggleArchive(); }} aria-label="Archive">
@@ -283,3 +258,32 @@
 		</div>
 	</article>
 </div>
+
+<!-- Popups render at viewport level so they're never clipped -->
+{#if paletteOpen}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div class="fixed inset-0 z-[60]" onclick={() => { paletteOpen = false; }} role="presentation"></div>
+	<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+		<ColorPalette color={note.color} onSelect={setColor} />
+	</div>
+{/if}
+
+{#if reminderOpen}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div class="fixed inset-0 z-[60]" onclick={() => { reminderOpen = false; }} role="presentation"></div>
+	<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+		<ReminderPicker
+			reminder={note.reminder}
+			onApply={(r) => setReminder(r)}
+			onClose={() => { reminderOpen = false; }}
+		/>
+	</div>
+{/if}
+
+{#if labelOpen}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div class="fixed inset-0 z-[60]" onclick={() => { labelOpen = false; }} role="presentation"></div>
+	<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+		<LabelMenu noteId={note.id} onClose={() => { labelOpen = false; }} />
+	</div>
+{/if}

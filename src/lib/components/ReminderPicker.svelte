@@ -81,7 +81,7 @@
 	}
 </script>
 
-<div class="w-72 rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-3 shadow-xl">
+<div class="w-80 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl">
 	<div class="mb-3 text-sm font-medium text-[var(--gkc-text)]">Add reminder</div>
 
 	<!-- Quick presets -->
