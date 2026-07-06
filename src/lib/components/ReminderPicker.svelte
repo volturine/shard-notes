@@ -23,35 +23,10 @@
 
 	let selected = $state(initDate(reminder));
 
-	// Quick presets
 	function apply(ts: number | null) {
 		onApply?.(ts);
 		onClose();
 	}
-
-	function atToday(h: number, m: number): number {
-		const d = new Date();
-		d.setHours(h, m, 0, 0);
-		return d.getTime();
-	}
-	function atTomorrow(h: number, m: number): number {
-		const d = new Date();
-		d.setDate(d.getDate() + 1);
-		d.setHours(h, m, 0, 0);
-		return d.getTime();
-	}
-	function atOffsetDays(days: number, h: number, m: number): number {
-		const d = new Date();
-		d.setDate(d.getDate() + days);
-		d.setHours(h, m, 0, 0);
-		return d.getTime();
-	}
-
-	const presets = [
-		{ label: 'Today, 6:00 PM', get: () => atToday(18, 0) },
-		{ label: 'Tomorrow, 8:00 AM', get: () => atTomorrow(8, 0) },
-		{ label: 'Next week, 9:00 AM', get: () => atOffsetDays(7, 9, 0) }
-	];
 
 	// Date offset buttons
 	function shiftDay(delta: number) {
@@ -132,19 +107,6 @@
 			<span class="shrink-0" aria-hidden="true">⏰</span>
 			<span>{willSaveLabel}</span>
 		</div>
-	</div>
-
-	<!-- Quick presets -->
-	<div class="mb-4 flex flex-col gap-1">
-		{#each presets as p}
-			<button
-				type="button"
-				onclick={() => apply(p.get())}
-				class="rounded-lg px-3 py-2 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
-			>
-				{p.label}
-			</button>
-		{/each}
 	</div>
 
 	<div class="mb-4 border-t border-[var(--gkc-border)] pt-4">
