@@ -67,7 +67,9 @@
 
 	function openUnlessAction(e: MouseEvent) {
 		const t = e.target as HTMLElement;
-		if (t.closest('[data-card-action]')) return;
+		// Only bail if we clicked an actual button inside the action bar,
+		// not the invisible container itself.
+		if (t.closest('button[data-card-action]')) return;
 		if (t.closest('[data-checklist-toggle]')) return;
 		onOpen(note.id);
 	}
@@ -192,10 +194,10 @@
 			</div>
 		{/if}
 
-		<!-- Footer actions — hover/touch overlay -->
+		<!-- Footer actions — absolute overlay at bottom, doesn't take flow space -->
 		<div
 			data-card-action
-			class="flex items-center gap-0.5 px-2 py-1 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto"
+			class="absolute inset-x-0 bottom-0 flex items-center gap-0.5 rounded-b-lg px-2 py-1 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto"
 		>
 			<!-- Pin: filled when pinned, outline when not -->
 			<button data-card-action class="icon-btn h-7 w-7 p-1.5" title="Pin note" onclick={(e) => { e.stopPropagation(); togglePin(); }} aria-label="Pin">
