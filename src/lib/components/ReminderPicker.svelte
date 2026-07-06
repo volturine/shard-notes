@@ -183,9 +183,24 @@
 	</div>
 
 	{#if showSaveCancel || showRemove}
-		<div class="flex flex-col gap-2 border-t border-[var(--gkc-border)] pt-4">
+		<div
+			class="flex items-center gap-3 border-t border-[var(--gkc-border)] pt-4 {showSaveCancel && showRemove
+				? 'justify-between'
+				: showRemove
+					? 'justify-start'
+					: 'justify-end'}"
+		>
+			{#if showRemove}
+				<button
+					type="button"
+					onclick={clear}
+					class="shrink-0 rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--gkc-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
+				>
+					Remove
+				</button>
+			{/if}
 			{#if showSaveCancel}
-				<div class="flex gap-2">
+				<div class="flex min-w-[11rem] flex-1 justify-end gap-2 sm:max-w-[13rem]">
 					<button
 						type="button"
 						onclick={() => onClose()}
@@ -201,15 +216,6 @@
 						Save
 					</button>
 				</div>
-			{/if}
-			{#if showRemove}
-				<button
-					type="button"
-					onclick={clear}
-					class="w-full rounded-lg py-2.5 text-sm font-medium text-[var(--gkc-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
-				>
-					Remove
-				</button>
 			{/if}
 		</div>
 	{/if}
