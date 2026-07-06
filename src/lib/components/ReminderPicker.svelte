@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { formatReminder } from '$lib/utils';
+
 	let {
 		reminder,
 		onClose,
@@ -62,6 +64,13 @@
 		selected.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
 	);
 
+	function formatFull(d: Date): string {
+		const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+		return `${d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })} at ${time}`;
+	}
+
+	const willSaveLabel = $derived(formatFull(selected));
+
 	// Time spinner
 	const hours24 = $derived(selected.getHours());
 	const minutes = $derived(selected.getMinutes());
@@ -97,7 +106,33 @@
 </script>
 
 <div class="w-72 rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-5 shadow-2xl">
-	<div class="mb-4 text-base font-medium text-[var(--gkc-text)]">Add reminder</div>
+	<div class="mb-3 text-base font-medium text-[var(--gkc-text)]">Reminder</div>
+
+	<!-- Current reminder on the note -->
+	<div class="mb-4 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-bg)] px-3 py-2.5">
+		<div class="text-[10px] font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
+			On this note
+		</div>
+		{#if reminder != null}
+			<div class="mt-1 flex items-start gap-2 text-sm font-medium text-[var(--gkc-text)]">
+				<span class="shrink-0" aria-hidden="true">⏰</span>
+				<span>{formatReminder(reminder)}</span>
+			</div>
+		{:else}
+			<div class="mt-1 text-sm text-[var(--gkc-text-muted)]">No reminder set</div>
+		{/if}
+	</div>
+
+	<!-- Live preview of what Save will apply -->
+	<div class="mb-4 rounded-xl bg-blue-600/10 px-3 py-2.5 dark:bg-blue-500/15">
+		<div class="text-[10px] font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
+			Will remind you
+		</div>
+		<div class="mt-1 flex items-start gap-2 text-sm font-semibold text-[var(--gkc-text)]">
+			<span class="shrink-0" aria-hidden="true">⏰</span>
+			<span>{willSaveLabel}</span>
+		</div>
+	</div>
 
 	<!-- Quick presets -->
 	<div class="mb-4 flex flex-col gap-1">
