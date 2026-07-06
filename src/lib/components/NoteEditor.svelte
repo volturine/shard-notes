@@ -104,7 +104,7 @@
 		}}
 	>
 		<div
-			class="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl"
+			class="flex max-h-[95vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl"
 			style="background-color: {bgColor(note.color)};"
 			role="dialog"
 			aria-modal="true"
@@ -186,7 +186,7 @@
 	<!-- Popups render at the viewport level so they're never clipped by the dialog -->
 	{#if paletteOpen}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="fixed inset-0 z-[60]" onclick={() => { paletteOpen = false; }} role="presentation"></div>
+		<div class="fixed inset-0 z-[60] bg-black/30" onclick={() => { paletteOpen = false; }} role="presentation"></div>
 		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
 			<ColorPalette color={note.color} onSelect={(c) => { commit({ color: c }); paletteOpen = false; }} />
 		</div>
@@ -194,7 +194,7 @@
 
 	{#if reminderOpen}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="fixed inset-0 z-[60]" onclick={() => { reminderOpen = false; }} role="presentation"></div>
+		<div class="fixed inset-0 z-[60] bg-black/30" onclick={() => { reminderOpen = false; }} role="presentation"></div>
 		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
 			<ReminderPicker
 				reminder={note.reminder}
@@ -206,7 +206,7 @@
 
 	{#if labelOpen}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="fixed inset-0 z-[60]" onclick={() => { labelOpen = false; }} role="presentation"></div>
+		<div class="fixed inset-0 z-[60] bg-black/30" onclick={() => { labelOpen = false; }} role="presentation"></div>
 		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
 			<LabelMenu noteId={note.id} onClose={() => { labelOpen = false; }} />
 		</div>
