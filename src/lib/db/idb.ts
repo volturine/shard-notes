@@ -4,9 +4,10 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import type { Note, Label, NoteImage } from '$lib/types';
 import { noteForLocalStorage } from '$lib/noteStorage';
+import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
 
 const DB_NAME = 'google-keep-clone';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const NOTES_STORE = 'notes';
 const LABELS_STORE = 'labels';
 const IMAGES_STORE = 'note-images';
@@ -14,10 +15,20 @@ const IMAGES_STORE = 'note-images';
 const LS_NOTES_KEY = 'gkc-notes';
 const LS_LABELS_KEY = 'gkc-labels';
 
-type ImageRow = NoteImage & { noteId: string };
+type ImageRow = {
+	noteId: string;
+	id: string;
+	mime: string;
+	name?: string;
+	createdAt: number;
+	blob?: Blob;
+	/** @deprecated legacy rows */
+	dataUrl?: string;
+};
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 let dbAvailable = true;
+const putChains = new Map<string, Promise<void>>();
 
 function imageKey(noteId: string, imageId: string): string {
 	return `${noteId}::${imageId}`;
@@ -27,14 +38,14 @@ function getDB(): Promise<IDBPDatabase> {
 	if (!dbAvailable) return Promise.reject(new Error('IDB unavailable'));
 	if (!dbPromise) {
 		dbPromise = openDB(DB_NAME, DB_VERSION, {
-			upgrade(db, oldVersion) {
+			upgrade(db) {
 				if (!db.objectStoreNames.contains(NOTES_STORE)) {
 					db.createObjectStore(NOTES_STORE, { keyPath: 'id' });
 				}
 				if (!db.objectStoreNames.contains(LABELS_STORE)) {
 					db.createObjectStore(LABELS_STORE, { keyPath: 'id' });
 				}
-				if (oldVersion < 2 && !db.objectStoreNames.contains(IMAGES_STORE)) {
+				if (!db.objectStoreNames.contains(IMAGES_STORE)) {
 					db.createObjectStore(IMAGES_STORE);
 				}
 			}
@@ -100,6 +111,17 @@ function noteLeanForIdb(note: Note): Note {
 	return { ...note, images };
 }
 
+async function rowToNoteImage(row: ImageRow): Promise<NoteImage | null> {
+	if (row.blob) {
+		const dataUrl = await blobToDataUrl(row.blob);
+		return { id: row.id, mime: row.mime, dataUrl, name: row.name, createdAt: row.createdAt };
+	}
+	if (row.dataUrl && row.dataUrl.length > 20) {
+		return { id: row.id, mime: row.mime, dataUrl: row.dataUrl, name: row.name, createdAt: row.createdAt };
+	}
+	return null;
+}
+
 async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
 	const metas = note.images ?? [];
 	const hydrated: NoteImage[] = [];
@@ -110,14 +132,9 @@ async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
 			continue;
 		}
 		const row = (await db.get(IMAGES_STORE, imageKey(note.id, meta.id))) as ImageRow | undefined;
-		if (row?.dataUrl) {
-			hydrated.push({
-				id: row.id,
-				mime: row.mime,
-				dataUrl: row.dataUrl,
-				name: row.name,
-				createdAt: row.createdAt
-			});
+		if (row) {
+			const img = await rowToNoteImage(row);
+			if (img) hydrated.push(img);
 		}
 	}
 
@@ -127,14 +144,9 @@ async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
 			const k = String(key);
 			if (!k.startsWith(`${note.id}::`)) continue;
 			const row = (await db.get(IMAGES_STORE, key)) as ImageRow | undefined;
-			if (row?.dataUrl) {
-				hydrated.push({
-					id: row.id,
-					mime: row.mime,
-					dataUrl: row.dataUrl,
-					name: row.name,
-					createdAt: row.createdAt
-				});
+			if (row) {
+				const img = await rowToNoteImage(row);
+				if (img) hydrated.push(img);
 			}
 		}
 	}
@@ -152,7 +164,15 @@ async function writeImageBlobs(db: IDBPDatabase, note: Note): Promise<void> {
 	}
 	for (const img of note.images ?? []) {
 		if (!img.dataUrl) continue;
-		const row: ImageRow = { noteId: note.id, ...img };
+		const blob = await dataUrlToBlob(img.dataUrl);
+		const row: ImageRow = {
+			noteId: note.id,
+			id: img.id,
+			mime: img.mime,
+			name: img.name,
+			createdAt: img.createdAt,
+			blob
+		};
 		await store.put(row, imageKey(note.id, img.id));
 	}
 	await tx.done;
@@ -185,16 +205,29 @@ export async function getAllNotes(): Promise<Note[]> {
 	return lsRead<Note>(LS_NOTES_KEY);
 }
 
-export async function putNote(note: Note): Promise<void> {
+async function putNoteInner(note: Note): Promise<void> {
 	lsUpsertNote(note);
-	if (!dbAvailable) return;
+	if (!dbAvailable) {
+		throw new Error('IndexedDB is not available in this browser tab');
+	}
+	const db = await getDB();
+	await db.put(NOTES_STORE, noteLeanForIdb(note));
+	await writeImageBlobs(db, note);
+}
+
+export async function putNote(note: Note): Promise<void> {
+	const prev = putChains.get(note.id) ?? Promise.resolve();
+	const run = prev
+		.catch(() => {})
+		.then(() => putNoteInner(note));
+	putChains.set(note.id, run);
 	try {
-		const db = await getDB();
-		await db.put(NOTES_STORE, noteLeanForIdb(note));
-		await writeImageBlobs(db, note);
+		await run;
 	} catch (err) {
 		console.error('[idb] putNote failed:', note.id, err);
 		throw err;
+	} finally {
+		if (putChains.get(note.id) === run) putChains.delete(note.id);
 	}
 }
 

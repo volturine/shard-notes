@@ -3,6 +3,7 @@
 	import { insertCodeBlock } from '$lib/checklistBody';
 	import { fileToNoteImage } from '$lib/noteImages';
 	import { notesStore } from '$lib/stores/notes.svelte';
+	import { formatStorageError } from '$lib/imageBlob';
 
 	let {
 		images = $bindable<NoteImage[]>([]),
@@ -28,7 +29,7 @@
 		onOpenTags?: () => void;
 		onCopy?: () => void;
 		onDelete?: () => void;
-		onImagesChange?: () => void;
+		onImagesChange?: (images: NoteImage[]) => void;
 		onClose?: () => void;
 	} = $props();
 
@@ -43,7 +44,7 @@
 
 	function addCodeBlock() {
 		body = insertCodeBlock(body);
-		onImagesChange?.();
+		onImagesChange?.(images);
 	}
 
 	async function onPickImage(e: Event) {
@@ -54,14 +55,15 @@
 		imageError = '';
 		try {
 			const img = await fileToNoteImage(file);
-			images = [...images, img];
-			onImagesChange?.();
+			const nextImages = [...images, img];
+			images = nextImages;
+			onImagesChange?.(nextImages);
 			if (noteId) {
 				try {
-					await notesStore.flushNote(noteId);
+					await notesStore.flushNote(noteId, { images: nextImages });
 				} catch (err) {
 					console.error('[footer] image flush:', err);
-					imageError = 'Photo saved locally but storage failed — try again';
+					imageError = `Could not save photo: ${formatStorageError(err)}`;
 				}
 			}
 		} catch (err) {
@@ -70,8 +72,14 @@
 	}
 
 	function removeImage(id: string) {
-		images = images.filter((i) => i.id !== id);
-		onImagesChange?.();
+		const nextImages = images.filter((i) => i.id !== id);
+		images = nextImages;
+		onImagesChange?.(nextImages);
+		if (noteId) {
+			notesStore.flushNote(noteId, { images: nextImages }).catch((err) => {
+				console.error('[footer] remove image flush:', err);
+			});
+		}
 	}
 
 	function openTags(e: MouseEvent) {

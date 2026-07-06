@@ -72,9 +72,9 @@
 		}, 250);
 	}
 
-	function commitNow() {
+	function commitNow(nextImages?: NoteImage[]) {
 		if (!note) return;
-		commit({ title, body, items: [], kind: 'text', images });
+		commit({ title, body, items: [], kind: 'text', images: nextImages ?? images });
 	}
 
 	async function close() {
@@ -82,7 +82,7 @@
 		if (note) {
 			commit({ title, body, items: [], kind: 'text', images });
 			try {
-				await notesStore.flushNote(note.id);
+				await notesStore.flushNote(note.id, { title, body, items: [], kind: 'text', images });
 			} catch (err) {
 				console.error('[NoteEditor] flush failed:', err);
 			}
@@ -208,7 +208,7 @@
 				onOpenTags={() => { closePopups(); labelOpen = true; }}
 				onCopy={() => void copyText()}
 				onDelete={() => { notesStore.trashNote(note.id); close(); }}
-				onImagesChange={commitNow}
+				onImagesChange={(imgs) => commitNow(imgs)}
 			/>
 		</div>
 	</div>

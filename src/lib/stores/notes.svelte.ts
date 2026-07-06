@@ -134,9 +134,13 @@ export class NotesStore {
 		}
 	}
 
-	async flushNote(id: string): Promise<void> {
-		const n = this.notes.find((x) => x.id === id);
-		if (!n) return;
+	async flushNote(id: string, patch: Partial<Note> = {}): Promise<void> {
+		const idx = this.notes.findIndex((x) => x.id === id);
+		if (idx === -1) return;
+		if (Object.keys(patch).length > 0) {
+			this.notes[idx] = { ...this.notes[idx], ...patch, updatedAt: Date.now() };
+		}
+		const n = this.notes[idx];
 		if (this.mirrorTimer) {
 			clearTimeout(this.mirrorTimer);
 			this.mirrorTimer = null;
