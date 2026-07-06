@@ -116,6 +116,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>Shard</title>
+</svelte:head>
+
 <div class="app-shell flex h-screen w-screen overflow-hidden bg-[var(--gkc-bg)] text-[var(--gkc-text)]" style="height: 100vh;">
 	{#if isMobile}
 		{#if uiStore.sidebarOpen}

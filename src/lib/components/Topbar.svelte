@@ -34,7 +34,7 @@
 
 	async function exportBackup() {
 		const data = await notesStore.exportBackup();
-		downloadJSON(data, `keep-clone-backup-${new Date().toISOString().slice(0, 10)}.json`);
+		downloadJSON(data, `shard-backup-${new Date().toISOString().slice(0, 10)}.json`);
 		settingsOpen = false;
 	}
 

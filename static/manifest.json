@@ -1,7 +1,7 @@
 {
-	"name": "Keep Clone",
-	"short_name": "Keep",
-	"description": "A 1:1 offline clone of Google Keep",
+	"name": "Shard",
+	"short_name": "Shard",
+	"description": "Quick notes, pins, reminders, and sync",
 	"start_url": "/",
 	"display": "standalone",
 	"background_color": "#ffffff",

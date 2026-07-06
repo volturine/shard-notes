@@ -1,4 +1,4 @@
-// Core domain types for the Google Keep clone.
+// Core domain types for Shard notes.
 
 export type NoteColor =
 	| 'default'

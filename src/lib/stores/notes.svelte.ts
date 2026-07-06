@@ -471,8 +471,8 @@ export class NotesStore {
 		return [
 			{
 				id: uid(),
-				title: 'Welcome to your Keep clone 👋',
-				body: 'This is an offline-first clone of Google Keep. Notes live in IndexedDB and persist across reloads. Try pinning, archiving, colouring, or switching to checklist mode.',
+				title: 'Welcome to Shard 👋',
+				body: 'Small note fragments, offline-first. Notes live on this device and sync when you sign in. Try pins, archive, colours, checklists, and reminders.',
 				items: [],
 				kind: 'text',
 				color: 'yellow',

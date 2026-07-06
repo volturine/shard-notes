@@ -1,42 +1,20 @@
-# sv
+# Shard
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+Offline-first notes — pins, labels, reminders, and optional cloud sync.
 
-## Creating a project
-
-If you're seeing this, you've probably already done this step. Congrats!
+## Develop
 
 ```sh
-# create a new project
-npx sv create my-app
+cd shard-notes
+npm install
+npm run dev -- --host 0.0.0.0
 ```
 
-To recreate this project with the same configuration:
+Tailscale / LAN: `http://<your-ip>:5173/`
 
-```sh
-# recreate this project
-npx sv@0.16.2 create --template minimal --types ts --install npm google-keep-clone
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
+## Build
 
 ```sh
 npm run build
+npm run preview
 ```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
