@@ -101,14 +101,83 @@ function lsRemove<T extends { id: string }>(key: string, id: string): T[] {
 }
 
 function noteLeanForIdb(note: Note): Note {
-	const images = (note.images ?? []).map((img) => ({
-		id: img.id,
-		mime: img.mime,
-		name: img.name,
-		createdAt: img.createdAt,
-		dataUrl: img.dataUrl?.length ? '' : ''
+	return detachNote(note);
+}
+
+/** Plain objects only — Svelte $state proxies break structuredClone / IDB. */
+function detachNote(note: Note): Note {
+	return {
+		id: String(note.id),
+		title: String(note.title ?? ''),
+		body: String(note.body ?? ''),
+		items: (note.items ?? []).map((i) => ({
+			id: String(i.id),
+			text: String(i.text ?? ''),
+			checked: Boolean(i.checked)
+		})),
+		kind: note.kind === 'list' ? 'list' : 'text',
+		color: note.color,
+		pinned: Boolean(note.pinned),
+		archived: Boolean(note.archived),
+		trashed: Boolean(note.trashed),
+		trashedAt: note.trashedAt ?? null,
+		createdAt: Number(note.createdAt),
+		updatedAt: Number(note.updatedAt),
+		reminder: note.reminder ?? null,
+		labels: [...(note.labels ?? [])],
+		images: (note.images ?? []).map((img) => ({
+			id: String(img.id),
+			mime: String(img.mime ?? 'image/jpeg'),
+			name: img.name != null ? String(img.name) : undefined,
+			createdAt: Number(img.createdAt),
+			dataUrl: ''
+		}))
+	};
+}
+
+function plainImages(note: Note): NoteImage[] {
+	return (note.images ?? []).map((img) => ({
+		id: String(img.id),
+		mime: String(img.mime ?? 'image/jpeg'),
+		dataUrl: String(img.dataUrl ?? ''),
+		name: img.name != null ? String(img.name) : undefined,
+		createdAt: Number(img.createdAt)
 	}));
-	return { ...note, images };
+}
+
+async function blobFromStoredValue(val: unknown): Promise<Blob | null> {
+	if (val instanceof Blob) return val;
+	if (val && typeof val === 'object' && 'blob' in val && (val as ImageRow).blob instanceof Blob) {
+		return (val as ImageRow).blob!;
+	}
+	return null;
+}
+
+async function hydrateOneImage(
+	db: IDBPDatabase,
+	noteId: string,
+	meta: NoteImage
+): Promise<NoteImage | null> {
+	if (meta.dataUrl && meta.dataUrl.length > 20) {
+		return {
+			id: meta.id,
+			mime: meta.mime,
+			dataUrl: meta.dataUrl,
+			name: meta.name,
+			createdAt: meta.createdAt
+		};
+	}
+	const key = imageKey(noteId, meta.id);
+	const stored = await db.get(IMAGES_STORE, key);
+	const blob = await blobFromStoredValue(stored);
+	if (blob) {
+		const dataUrl = await blobToDataUrl(blob);
+		return { id: meta.id, mime: meta.mime || blob.type, dataUrl, name: meta.name, createdAt: meta.createdAt };
+	}
+	if (stored && typeof stored === 'object') {
+		return rowToNoteImage(stored as ImageRow);
+	}
+	return null;
 }
 
 async function rowToNoteImage(row: ImageRow): Promise<NoteImage | null> {
@@ -127,15 +196,8 @@ async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
 	const hydrated: NoteImage[] = [];
 
 	for (const meta of metas) {
-		if (meta.dataUrl && meta.dataUrl.length > 20) {
-			hydrated.push(meta);
-			continue;
-		}
-		const row = (await db.get(IMAGES_STORE, imageKey(note.id, meta.id))) as ImageRow | undefined;
-		if (row) {
-			const img = await rowToNoteImage(row);
-			if (img) hydrated.push(img);
-		}
+		const img = await hydrateOneImage(db, note.id, meta);
+		if (img) hydrated.push(img);
 	}
 
 	if (hydrated.length === 0) {
@@ -143,11 +205,15 @@ async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
 		for (const key of keys) {
 			const k = String(key);
 			if (!k.startsWith(`${note.id}::`)) continue;
-			const row = (await db.get(IMAGES_STORE, key)) as ImageRow | undefined;
-			if (row) {
-				const img = await rowToNoteImage(row);
-				if (img) hydrated.push(img);
-			}
+			const imageId = k.slice(note.id.length + 2);
+			const meta: NoteImage = {
+				id: imageId,
+				mime: 'image/jpeg',
+				dataUrl: '',
+				createdAt: note.updatedAt
+			};
+			const img = await hydrateOneImage(db, note.id, meta);
+			if (img) hydrated.push(img);
 		}
 	}
 
@@ -155,25 +221,25 @@ async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
 }
 
 async function writeImageBlobs(db: IDBPDatabase, note: Note): Promise<void> {
-	const prefix = `${note.id}::`;
-	const keys = await db.getAllKeys(IMAGES_STORE);
-	const tx = db.transaction(IMAGES_STORE, 'readwrite');
-	const store = tx.store;
-	for (const key of keys) {
-		if (String(key).startsWith(prefix)) await store.delete(key);
-	}
-	for (const img of note.images ?? []) {
+	const imgs = plainImages(note);
+	const entries: { key: string; blob: Blob }[] = [];
+	for (const img of imgs) {
 		if (!img.dataUrl) continue;
 		const blob = await dataUrlToBlob(img.dataUrl);
-		const row: ImageRow = {
-			noteId: note.id,
-			id: img.id,
-			mime: img.mime,
-			name: img.name,
-			createdAt: img.createdAt,
-			blob
-		};
-		await store.put(row, imageKey(note.id, img.id));
+		entries.push({ key: imageKey(note.id, img.id), blob });
+	}
+
+	const prefix = `${note.id}::`;
+	const keys = await db.getAllKeys(IMAGES_STORE);
+	const toDelete = keys.filter((k) => String(k).startsWith(prefix));
+
+	const tx = db.transaction(IMAGES_STORE, 'readwrite');
+	const store = tx.store;
+	for (const key of toDelete) {
+		store.delete(key);
+	}
+	for (const { key, blob } of entries) {
+		store.put(blob, key);
 	}
 	await tx.done;
 }
@@ -206,12 +272,13 @@ export async function getAllNotes(): Promise<Note[]> {
 }
 
 async function putNoteInner(note: Note): Promise<void> {
-	lsUpsertNote(note);
+	const plain = detachNote(note);
+	lsUpsertNote(plain);
 	if (!dbAvailable) {
 		throw new Error('IndexedDB is not available in this browser tab');
 	}
 	const db = await getDB();
-	await db.put(NOTES_STORE, noteLeanForIdb(note));
+	await db.put(NOTES_STORE, plain);
 	await writeImageBlobs(db, note);
 }
 
@@ -290,7 +357,8 @@ export async function bulkPutNotes(notes: Note[]): Promise<void> {
 		try {
 			const db = await getDB();
 			for (const n of notes) {
-				await db.put(NOTES_STORE, noteLeanForIdb(n));
+				const plain = detachNote(n);
+				await db.put(NOTES_STORE, plain);
 				await writeImageBlobs(db, n);
 			}
 		} catch (err) {
