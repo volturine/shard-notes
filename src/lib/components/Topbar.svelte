@@ -10,7 +10,19 @@
 	let syncOpen = $state(false);
 
 	let refreshing = $state(false);
-	let quickSyncBusy = false;
+	let quickSyncBusy = $state(false);
+
+	async function doQuickSync(e: MouseEvent) {
+		if (quickSyncBusy) return;
+		quickSyncBusy = true;
+		const btn = e.currentTarget as HTMLButtonElement;
+		try {
+			await notesStore.syncWithCloudManual();
+		} finally {
+			quickSyncBusy = false;
+			btn.blur();
+		}
+	}
 
 	async function refresh() {
 		if (refreshing) return;
@@ -20,16 +32,6 @@
 		}
 		await notesStore.hardResync();
 		refreshing = false;
-	}
-
-	async function doQuickSync() {
-		if (quickSyncBusy) return;
-		quickSyncBusy = true;
-		try {
-			await notesStore.syncWithCloudManual();
-		} finally {
-			quickSyncBusy = false;
-		}
 	}
 
 	async function exportBackup() {
@@ -127,9 +129,11 @@
 
 	<button
 		class="icon-btn h-10 w-10 p-2"
+		class:opacity-60={quickSyncBusy}
 		title={syncStore.isLoggedIn ? 'Sync' : 'Set up sync'}
 		onclick={syncStore.isLoggedIn ? doQuickSync : () => { syncOpen = true; }}
 		aria-label="Sync"
+		aria-busy={quickSyncBusy}
 	>
 		<svg
 			data-gkc-sync-icon

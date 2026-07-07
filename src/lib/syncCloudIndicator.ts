@@ -18,7 +18,11 @@ function scheduleSpinOff() {
 	const delay = Math.max(0, MIN_SPIN_MS - elapsed);
 	hideTimer = setTimeout(() => {
 		hideTimer = null;
-		if (inFlight <= 0) setSpin(false);
+		if (inFlight <= 0) {
+			setSpin(false);
+		} else {
+			scheduleSpinOff();
+		}
 	}, delay);
 }
 

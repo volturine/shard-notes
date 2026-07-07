@@ -16,7 +16,6 @@ import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { effectiveBody, noteImages, toggleLineAt } from '$lib/checklistBody';
 import { mergeNoteLists, mergeTwoNotes } from '$lib/noteMerge';
 import { syncStore } from '$lib/stores/sync.svelte';
-import { finishSyncCloudIndicator } from '$lib/syncCloudIndicator';
 import { noteForLocalStorage, stripMirrorPayload, clearOversizedNoteStorage } from '$lib/noteStorage';
 
 const SAVE_DEBOUNCE_MS = 250;
@@ -464,21 +463,21 @@ export class NotesStore {
 
 	// Manual sync — caller shows UI feedback (spinning cloud icon).
 	async syncWithCloudManual(): Promise<boolean> {
-		return this.doSync();
+		return this.doSync(true);
 	}
 
 	// Auto sync — silent, no UI feedback.
 	async syncWithCloud(): Promise<boolean> {
-		return this.doSync();
+		return this.doSync(false);
 	}
 
 	// Core sync — surgical updates, only touches notes that actually changed.
-	private async doSync(): Promise<boolean> {
+	private async doSync(indicate = false): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
-		const localNotes = JSON.parse(JSON.stringify(this.notes));
+		const localNotes = this.notes.map((n) => noteForLocalStorage(n) as Note);
 		const localLabels = JSON.parse(JSON.stringify(this.labels));
 		try {
-			const result = await syncStore.sync(localNotes, localLabels);
+			const result = await syncStore.sync(localNotes, localLabels, indicate);
 			if (!result.success || !result.notes) return false;
 
 			const remoteMap = new Map<string, Note>();
@@ -525,8 +524,9 @@ export class NotesStore {
 			bulkPutNotes(this.notes).catch(() => {});
 			bulkPutLabels(this.labels).catch(() => {});
 			return true;
-		} finally {
-			finishSyncCloudIndicator(syncStore);
+		} catch (err) {
+			console.error('[notes] doSync:', err);
+			return false;
 		}
 	}
 

@@ -88,10 +88,14 @@ class SyncStore {
 		}
 	}
 
-	/** Single sync method. No reactive state — caller controls UI feedback. */
-	async sync(notes: Note[], labels: Label[]): Promise<{ success: boolean; notes?: Note[]; labels?: Label[]; error?: string }> {
+	/** @param indicate When true, spins the topbar cloud (manual sync only). */
+	async sync(
+		notes: Note[],
+		labels: Label[],
+		indicate = false
+	): Promise<{ success: boolean; notes?: Note[]; labels?: Label[]; error?: string }> {
 		if (!this.account) return { success: false, error: 'Not logged in' };
-		this.onSyncStart?.();
+		if (indicate) this.onSyncStart?.();
 		try {
 			const controller = new AbortController();
 			const timeout = setTimeout(() => controller.abort(), 10000);
@@ -108,6 +112,8 @@ class SyncStore {
 			return { success: true, notes: data.notes, labels: data.labels };
 		} catch {
 			return { success: false, error: 'Network error' };
+		} finally {
+			if (indicate) this.onSyncEnd?.();
 		}
 	}
 
