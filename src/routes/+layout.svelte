@@ -127,6 +127,8 @@
 
 	function handleSidebarClick(e: MouseEvent) {
 		const target = e.target as HTMLElement;
+		if (target.closest('input, textarea, select')) return;
+		if (target.closest('[data-labels-edit]')) return;
 		if (target.closest('button')) {
 			if (isMobile) {
 				setTimeout(() => { uiStore.sidebarOpen = false; }, 100);
