@@ -185,6 +185,16 @@ body {
 	outline: 2px solid var(--gkc-accent, #3b82f6);
 	outline-offset: 2px;
 }
+/* No hover/press/focus chrome — e.g. cloud sync (spin only). */
+.icon-btn-plain,
+.icon-btn-plain:hover,
+.icon-btn-plain:active,
+.icon-btn-plain:focus,
+.icon-btn-plain:focus-visible {
+	background-color: transparent !important;
+	outline: none !important;
+	box-shadow: none !important;
+}
 /* Hide elements on phone screens (under 640px) */
 @media (max-width: 639px) {
 	.mobile-hide { display: none !important; }

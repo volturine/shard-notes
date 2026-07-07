@@ -12,6 +12,11 @@
 	let refreshing = $state(false);
 	let quickSyncBusy = $state(false);
 
+	function releaseCloudBtn(el: HTMLButtonElement) {
+		el.blur();
+		requestAnimationFrame(() => el.blur());
+	}
+
 	async function doQuickSync(e: MouseEvent) {
 		if (quickSyncBusy) return;
 		quickSyncBusy = true;
@@ -20,8 +25,12 @@
 			await notesStore.syncWithCloudManual();
 		} finally {
 			quickSyncBusy = false;
-			btn.blur();
+			releaseCloudBtn(btn);
 		}
+	}
+
+	function onCloudPointerUp(e: PointerEvent) {
+		releaseCloudBtn(e.currentTarget as HTMLButtonElement);
 	}
 
 	async function refresh() {
@@ -128,9 +137,11 @@
 	</button>
 
 	<button
-		class="icon-btn h-10 w-10 p-2"
-		class:opacity-60={quickSyncBusy}
+		type="button"
+		class="icon-btn icon-btn-plain h-10 w-10 p-2"
 		title={syncStore.isLoggedIn ? 'Sync' : 'Set up sync'}
+		onmousedown={(e) => e.preventDefault()}
+		onpointerup={onCloudPointerUp}
 		onclick={syncStore.isLoggedIn ? doQuickSync : () => { syncOpen = true; }}
 		aria-label="Sync"
 		aria-busy={quickSyncBusy}
