@@ -149,7 +149,7 @@
 				</div>
 			{/each}
 
-			<div class="labels-edit-row labels-edit-row--new">
+			<div class="labels-edit-row">
 				<span class="text-base leading-none" aria-hidden="true">＋</span>
 				<input
 					bind:this={newLabelInput}
@@ -159,15 +159,17 @@
 					placeholder="Create new label…"
 					onkeydown={onNewLabelKey}
 				/>
+				<button
+					type="button"
+					class="labels-edit-add icon-btn-plain"
+					title="Add label"
+					aria-label="Add label"
+					disabled={!newLabelName.trim()}
+					onclick={addLabel}
+				>
+					＋
+				</button>
 			</div>
-			<button
-				type="button"
-				class="mx-6 mt-1 rounded-full py-2 text-center text-sm font-medium text-blue-600 disabled:opacity-40 dark:text-blue-400"
-				disabled={!newLabelName.trim()}
-				onclick={addLabel}
-			>
-				Add label
-			</button>
 		</div>
 	{:else}
 		{#each notesStore.labels as label (label.id)}
