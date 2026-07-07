@@ -17,55 +17,63 @@
 	const filteredOthers = $derived(search ? notesStore.search(uiStore.search, others) : others);
 </script>
 
-<div class="w-full pt-4 pb-8 sm:mx-auto sm:max-w-[1680px]">
-	<div class="mb-6 flex justify-center">
+<div class="pt-4 pb-8">
+	<div class="notes-content mb-6">
 		<NoteComposer />
 	</div>
 
 	{#if filteredPinned.length > 0}
-		<h2 class="mb-2 ml-2 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
-			Pinned
-		</h2>
+		<div class="notes-content">
+			<h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
+				Pinned
+			</h2>
+		</div>
 	{/if}
 
 	{#if filteredPinned.length > 0}
-		{#if uiStore.layout === 'grid'}
-			<MasonryGrid notes={filteredPinned} onOpen={openEditor} class="mb-8" />
-		{:else}
-			<div class="masonry masonry-list mb-8">
-				{#each filteredPinned as note (note.id)}
-					<div>
-						<NoteCard {note} onOpen={openEditor} />
-					</div>
-				{/each}
-			</div>
-		{/if}
+		<div class="notes-content mb-8">
+			{#if uiStore.layout === 'grid'}
+				<MasonryGrid notes={filteredPinned} onOpen={openEditor} />
+			{:else}
+				<div class="masonry masonry-list">
+					{#each filteredPinned as note (note.id)}
+						<div>
+							<NoteCard {note} onOpen={openEditor} />
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
 	{/if}
 
 	{#if filteredOthers.length > 0 || filteredPinned.length === 0}
 		{#if filteredPinned.length > 0}
-			<h2 class="mb-3 mt-6 ml-2 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
-				Others
-			</h2>
+			<div class="notes-content">
+				<h2 class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
+					Others
+				</h2>
+			</div>
 		{/if}
 	{/if}
 
 	{#if filteredOthers.length === 0 && filteredPinned.length === 0}
-		<div class="mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]">
+		<div class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]">
 			<div class="mb-2 text-5xl">🗒️</div>
 			<div class="text-sm">No notes here yet.</div>
 		</div>
 	{:else if filteredOthers.length > 0}
-		{#if uiStore.layout === 'grid'}
-			<MasonryGrid notes={filteredOthers} onOpen={openEditor} />
-		{:else}
-			<div class="masonry masonry-list">
-				{#each filteredOthers as note (note.id)}
-					<div>
-						<NoteCard {note} onOpen={openEditor} />
-					</div>
-				{/each}
-			</div>
-		{/if}
+		<div class="notes-content">
+			{#if uiStore.layout === 'grid'}
+				<MasonryGrid notes={filteredOthers} onOpen={openEditor} />
+			{:else}
+				<div class="masonry masonry-list">
+					{#each filteredOthers as note (note.id)}
+						<div>
+							<NoteCard {note} onOpen={openEditor} />
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
 	{/if}
 </div>

@@ -124,20 +124,20 @@
 	</div>
 
 	{#if labelsEditMode}
-		<div class="flex flex-col gap-1 px-3 py-1" role="group" aria-label="Edit labels" data-labels-edit>
+		<div class="flex flex-col gap-0.5 py-1" role="group" aria-label="Edit labels" data-labels-edit>
 			{#each notesStore.labels as label (label.id)}
-				<div class="flex items-center gap-2 rounded-full py-1 pl-3 pr-1">
-					<span class="text-base shrink-0" aria-hidden="true">🏷️</span>
+				<div class="labels-edit-row">
+					<span class="text-base leading-none" aria-hidden="true">🏷️</span>
 					<input
 						type="text"
+						class="labels-edit-input"
 						value={draftNames[label.id] ?? label.name}
 						oninput={(e) => updateDraftName(label.id, (e.currentTarget as HTMLInputElement).value)}
-						class="min-w-0 flex-1 rounded border border-[var(--gkc-border)] bg-[var(--gkc-bg)] px-2 py-1.5 text-sm text-[var(--gkc-text)] focus:outline-none focus:ring-2 focus:ring-blue-500/40"
 						aria-label="Rename {label.name}"
 					/>
 					<button
 						type="button"
-						class="icon-btn h-9 w-9 shrink-0 text-[var(--gkc-text-muted)] hover:text-red-600 dark:hover:text-red-400"
+						class="labels-edit-delete icon-btn-plain"
 						title="Delete label"
 						aria-label="Delete label {label.name}"
 						onclick={() => removeLabel(label.id)}
@@ -149,25 +149,25 @@
 				</div>
 			{/each}
 
-			<div class="flex items-center gap-2 rounded-full py-1 pl-3 pr-1">
-				<span class="text-base shrink-0" aria-hidden="true">＋</span>
+			<div class="labels-edit-row labels-edit-row--new">
+				<span class="text-base leading-none" aria-hidden="true">＋</span>
 				<input
 					bind:this={newLabelInput}
 					type="text"
+					class="labels-edit-input"
 					bind:value={newLabelName}
 					placeholder="Create new label…"
 					onkeydown={onNewLabelKey}
-					class="min-w-0 flex-1 rounded border border-[var(--gkc-border)] bg-[var(--gkc-bg)] px-2 py-1.5 text-sm text-[var(--gkc-text)] focus:outline-none focus:ring-2 focus:ring-blue-500/40"
 				/>
-				<button
-					type="button"
-					class="shrink-0 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
-					disabled={!newLabelName.trim()}
-					onclick={addLabel}
-				>
-					Add
-				</button>
 			</div>
+			<button
+				type="button"
+				class="mx-6 mt-1 rounded-full py-2 text-center text-sm font-medium text-blue-600 disabled:opacity-40 dark:text-blue-400"
+				disabled={!newLabelName.trim()}
+				onclick={addLabel}
+			>
+				Add label
+			</button>
 		</div>
 	{:else}
 		{#each notesStore.labels as label (label.id)}
