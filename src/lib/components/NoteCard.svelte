@@ -104,7 +104,7 @@
 
 	<article
 		class="relative z-[1] flex w-full max-h-[320px] cursor-pointer flex-col overflow-hidden rounded-lg border border-black/5 shadow-sm transition-shadow touch-pan-y dark:border-white/10"
-		style="background-color: {bgColor(note.color)}; transform: translate3d({offsetX}px, 0, 0); will-change: transform; transition: {dragging ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1), box-shadow 0.2s'};"
+		style="background-color: {bgColor(note.color)}; {offsetX !== 0 || dragging ? `transform: translate3d(${offsetX}px, 0, 0);` : 'transform: none;'} will-change: transform; transition: {dragging ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1), box-shadow 0.2s'};"
 		class:shadow-md={note.pinned}
 		ontouchstart={onTouchStart}
 		ontouchmove={onTouchMove}
