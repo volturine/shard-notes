@@ -1,79 +1,42 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
+import { mergeLabels, mergeNotes, type SyncLabel, type SyncNote } from '$lib/server/syncMerge';
 import { readSyncData, writeSyncData } from '$lib/server/syncStore';
 
-// POST /api/sync/sync
-// Body: { syncCode: string, notes: Note[], labels: Label[] }
-// Returns: { notes: Note[], labels: Label[], updatedAt: number }
-//
-// Bidirectional sync: merges client notes with server notes by updatedAt.
-// For each note ID: the version with the higher updatedAt wins.
-// Notes that exist only on client are added to server, and vice versa.
-
-interface NoteLike {
-	id: string;
-	updatedAt: number;
-	[key: string]: unknown;
+function isArray(value: unknown): value is unknown[] {
+	return Array.isArray(value);
 }
 
-interface LabelLike {
-	id: string;
-	createdAt: number;
-	[key: string]: unknown;
-}
-
-function mergeNotes(local: NoteLike[], remote: NoteLike[]): NoteLike[] {
-	const map = new Map<string, NoteLike>();
-	for (const n of remote) map.set(n.id, n);
-	for (const n of local) {
-		const existing = map.get(n.id);
-		if (!existing || n.updatedAt > existing.updatedAt) {
-			map.set(n.id, n);
-		}
-	}
-	return Array.from(map.values());
-}
-
-function mergeLabels(local: LabelLike[], remote: LabelLike[]): LabelLike[] {
-	const map = new Map<string, LabelLike>();
-	for (const l of remote) map.set(l.id, l);
-	for (const l of local) {
-		const existing = map.get(l.id);
-		if (!existing || l.createdAt > existing.createdAt) {
-			map.set(l.id, l);
-		}
-	}
-	return Array.from(map.values());
-}
-
+// POST /api/sync/sync — full bidirectional record merge. Notes include image data so a
+// successfully completed sync is a complete device backup, not a metadata-only replica.
 export const POST: RequestHandler = async ({ request }) => {
-	const { syncCode, notes, labels } = await request.json();
-
-	if (!syncCode || typeof syncCode !== 'string') {
+	let body: { syncCode?: unknown; notes?: unknown; labels?: unknown };
+	try {
+		body = await request.json();
+	} catch {
+		return json({ error: 'Invalid JSON body' }, { status: 400 });
+	}
+	if (typeof body.syncCode !== 'string' || !body.syncCode) {
 		return json({ error: 'Sync code is required' }, { status: 400 });
 	}
-
-	const data = readSyncData();
-	const user = Object.values(data).find((u) => u.syncCode === syncCode);
-
-	if (!user) {
-		return json({ error: 'Invalid sync code' }, { status: 404 });
+	if (!isArray(body.notes) || !isArray(body.labels)) {
+		return json({ error: 'Notes and labels must be arrays' }, { status: 400 });
 	}
 
-	const remoteNotes = (user.notes || []) as NoteLike[];
-	const remoteLabels = (user.labels || []) as LabelLike[];
+	try {
+		const data = readSyncData();
+		const user = Object.values(data).find((entry) => entry.syncCode === body.syncCode);
+		if (!user) return json({ error: 'Invalid sync code' }, { status: 404 });
 
-	const mergedNotes = mergeNotes(notes || [], remoteNotes);
-	const mergedLabels = mergeLabels(labels || [], remoteLabels);
-
-	user.notes = mergedNotes;
-	user.labels = mergedLabels;
-	user.updatedAt = Date.now();
-	writeSyncData(data);
-
-	return json({
-		notes: mergedNotes,
-		labels: mergedLabels,
-		updatedAt: user.updatedAt
-	});
+		const notes = mergeNotes(body.notes as SyncNote[], user.notes as SyncNote[]);
+		const labels = mergeLabels(body.labels as SyncLabel[], user.labels as SyncLabel[]);
+		user.notes = notes;
+		user.labels = labels;
+		user.updatedAt = Date.now();
+		writeSyncData(data);
+		return json({ notes, labels, updatedAt: user.updatedAt });
+	} catch (err) {
+		console.error('[sync] merge failed:', err);
+		return json({ error: 'Sync storage is temporarily unavailable' }, { status: 503 });
+	}
 };

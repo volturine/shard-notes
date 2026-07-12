@@ -42,7 +42,7 @@ export function parseBody(body: string): BodySegment[] {
 	while ((m = FENCE_RE.exec(body)) !== null) {
 		if (m.index > last) {
 			const chunk = body.slice(last, m.index);
-			const lineOffset = segments.length ? segments[segments.length - 1].lineIndex + 1 : 0;
+			const lineOffset = body.slice(0, last).split('\n').length - 1;
 			segments.push(...parseTextChunk(chunk, lineOffset));
 		}
 		segments.push({
@@ -54,7 +54,7 @@ export function parseBody(body: string): BodySegment[] {
 		last = m.index + m[0].length;
 	}
 	if (last < body.length) {
-		const lineOffset = segments.filter((s) => s.type !== 'code').length;
+		const lineOffset = body.slice(0, last).split('\n').length - 1;
 		segments.push(...parseTextChunk(body.slice(last), lineOffset));
 	}
 	if (segments.length === 0 && body === '') {

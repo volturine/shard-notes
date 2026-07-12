@@ -10,56 +10,29 @@ import {
 	bulkPutNotes,
 	bulkPutLabels,
 	clearAllNotes,
-	clearAllLabels
+	clearAllLabels,
+	normalizeLabel
 } from '$lib/db/idb';
+import { mergeNoteLists, mergeTwoNotes, mergeLabelLists } from '$lib/noteMerge';
+import { syncStore } from '$lib/stores/sync.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { effectiveBody, noteImages, toggleLineAt } from '$lib/checklistBody';
-import { mergeNoteLists, mergeTwoNotes } from '$lib/noteMerge';
-import { syncStore } from '$lib/stores/sync.svelte';
-import { noteForLocalStorage, stripMirrorPayload, clearOversizedNoteStorage } from '$lib/noteStorage';
-
-const SAVE_DEBOUNCE_MS = 250;
-
-const LS_NOTES_MIRROR = 'gkc-notes-mirror';
-const LS_LABELS_MIRROR = 'gkc-labels-mirror';
-
-// No more free function — mirrorToLS is now a private method on the class.
+import { readLabelsMirror, readNotesMirror, writeLabelsMirror, writeNotesMirror } from '$lib/noteStorage';
 
 export class NotesStore {
 	notes = $state<Note[]>([]);
 	labels = $state<Label[]>([]);
 	loaded = $state(false);
+	lastPersistError = $state<string | null>(null);
 
-	// Synchronous load from localStorage — runs before first render so notes
-	// appear instantly with no async gap / flicker.
 	constructor() {
-		if (typeof localStorage === 'undefined') return;
-		clearOversizedNoteStorage();
-		try {
-			const mNotes = localStorage.getItem(LS_NOTES_MIRROR);
-			if (mNotes) {
-				const parsed = stripMirrorPayload(mNotes);
-				if (parsed === null) {
-					console.warn('[notes] Clearing corrupt/oversized notes mirror');
-					localStorage.removeItem(LS_NOTES_MIRROR);
-				} else {
-					this.notes = parsed;
-				}
-			}
-			const mLabels = localStorage.getItem(LS_LABELS_MIRROR);
-			if (mLabels) {
-				try {
-					this.labels = JSON.parse(mLabels) as Label[];
-				} catch {
-					localStorage.removeItem(LS_LABELS_MIRROR);
-				}
-			}
-			if (this.notes.length > 0) this.loaded = true;
-		} catch (err) {
-			console.error('[notes] constructor LS load:', err);
-			try {
-				localStorage.removeItem(LS_NOTES_MIRROR);
-			} catch {}
+		this.notes = readNotesMirror();
+		this.labels = readLabelsMirror().map(normalizeLabel);
+		if (this.notes.length > 0) this.loaded = true;
+		if (typeof window !== 'undefined') {
+			window.addEventListener('visibilitychange', () => {
+				if (document.visibilityState === 'hidden') this.mirrorToLS();
+			});
 		}
 	}
 
@@ -81,42 +54,48 @@ export class NotesStore {
 			await this.rehydrateFromIDB();
 			return;
 		}
-		if (this.notes.length > 0) {
-			this.loaded = true;
-			await this.rehydrateFromIDB();
-			return;
-		}
 
-		let notes: Note[] = [];
-		let labels: Label[] = [];
-		if (typeof localStorage !== 'undefined') {
-			try {
-				const mNotes = localStorage.getItem(LS_NOTES_MIRROR);
-				if (mNotes) {
-					const parsed = stripMirrorPayload(mNotes);
-					if (parsed) notes = parsed;
-				}
-				const mLabels = localStorage.getItem(LS_LABELS_MIRROR);
-				if (mLabels) labels = JSON.parse(mLabels) as Label[];
-			} catch {}
-		}
-
+		const mirrorNotes = this.notes.length ? this.notes : readNotesMirror();
+		const mirrorLabels = this.labels.length ? this.labels : readLabelsMirror().map(normalizeLabel);
+		let dbNotes: Note[] = [];
+		let dbLabels: Label[] = [];
+		let deviceReadFailed = false;
 		try {
-			const [dbNotes, dbLabels] = await Promise.all([getAllNotes(), getAllLabels()]);
-			notes = mergeNoteLists(notes, dbNotes);
-			if (labels.length === 0) labels = dbLabels;
-		} catch {}
+			[dbNotes, dbLabels] = await Promise.all([getAllNotes(), getAllLabels()]);
+		} catch (err) {
+			deviceReadFailed = true;
+			this.recordPersistenceError('Could not read IndexedDB', err);
+		}
 
+		const notes = mergeNoteLists(mirrorNotes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
+		const labels = mergeLabelLists(mirrorLabels, dbLabels)
+			.map(normalizeLabel)
+			.sort((a, b) => a.name.localeCompare(b.name));
 		const seededFlag = typeof localStorage !== 'undefined' ? localStorage.getItem('gkc-seeded') : null;
+
 		if (notes.length === 0 && labels.length === 0 && !seededFlag) {
-			localStorage.setItem('gkc-seeded', '1');
-			const seed = this.seedNotes();
-			this.notes = seed;
+			localStorage?.setItem('gkc-seeded', '1');
+			this.notes = this.seedNotes();
+			this.labels = [];
 			this.mirrorToLS();
-			Promise.all(seed.map((n) => putNote(n))).catch(() => {});
+			try {
+				await bulkPutNotes(this.notes);
+			} catch (err) {
+				this.recordPersistenceError('Could not save starter notes', err);
+			}
 		} else {
-			this.notes = notes.sort((a, b) => b.updatedAt - a.updatedAt);
-			this.labels = labels.sort((a, b) => a.name.localeCompare(b.name));
+			this.notes = notes;
+			this.labels = labels;
+			this.mirrorToLS();
+			// Recover the primary store from a valid mirror after an IDB reset.
+			if (!deviceReadFailed && dbNotes.length === 0 && notes.length > 0) {
+				try {
+					await bulkPutNotes(notes);
+					await bulkPutLabels(labels);
+				} catch (err) {
+					this.recordPersistenceError('Could not restore IndexedDB from mirror', err);
+				}
+			}
 		}
 		this.purgeOldTrash();
 		this.loaded = true;
@@ -124,12 +103,14 @@ export class NotesStore {
 
 	private async rehydrateFromIDB() {
 		try {
-			const dbNotes = await getAllNotes();
-			if (!dbNotes.length) return;
-			const merged = mergeNoteLists(this.notes, dbNotes);
-			this.notes = merged.sort((a, b) => b.updatedAt - a.updatedAt);
+			const [dbNotes, dbLabels] = await Promise.all([getAllNotes(), getAllLabels()]);
+			this.notes = mergeNoteLists(this.notes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
+			this.labels = mergeLabelLists(this.labels, dbLabels)
+				.map(normalizeLabel)
+				.sort((a, b) => a.name.localeCompare(b.name));
+			this.mirrorToLS();
 		} catch (err) {
-			console.error('[notes] rehydrateFromIDB:', err);
+			this.recordPersistenceError('Could not rehydrate from IndexedDB', err);
 		}
 	}
 
@@ -139,13 +120,15 @@ export class NotesStore {
 		if (Object.keys(patch).length > 0) {
 			this.notes[idx] = { ...this.notes[idx], ...patch, updatedAt: Date.now() };
 		}
-		const n = this.notes[idx];
-		if (this.mirrorTimer) {
-			clearTimeout(this.mirrorTimer);
-			this.mirrorTimer = null;
-		}
-		await putNote(n);
+		const note = this.notes[idx];
 		this.mirrorToLS();
+		try {
+			await putNote(note);
+			this.lastPersistError = null;
+		} catch (err) {
+			this.recordPersistenceError(`Could not save note ${id}`, err);
+			throw err;
+		}
 	}
 
 	discardIfEmpty(id: string): void {
@@ -166,7 +149,9 @@ export class NotesStore {
 		);
 		if (toPurge.length === 0) return;
 		this.notes = this.notes.filter((n) => !toPurge.find((p) => p.id === n.id));
-		Promise.all(toPurge.map((p) => deleteNote(p.id))).catch(() => {});
+		Promise.all(toPurge.map((p) => deleteNote(p.id))).catch((err) =>
+			this.recordPersistenceError('Could not purge expired trash', err)
+		);
 	}
 
 	// --- CRUD ------------------------------------------------------------
@@ -301,14 +286,16 @@ export class NotesStore {
 	deleteNoteForever(id: string): void {
 		this.notes = this.notes.filter((n) => n.id !== id);
 		this.mirrorToLS();
-		deleteNote(id).catch(() => {});
+		deleteNote(id).catch((err) => this.recordPersistenceError(`Could not delete note ${id}`, err));
 	}
 
 	emptyTrash(): void {
 		const ids = this.trashedNotes.map((n) => n.id);
 		this.notes = this.notes.filter((n) => !n.trashed);
 		this.mirrorToLS();
-		Promise.all(ids.map((id) => deleteNote(id))).catch(() => {});
+		Promise.all(ids.map((id) => deleteNote(id))).catch((err) =>
+			this.recordPersistenceError('Could not empty trash', err)
+		);
 	}
 
 	// Labels ---------------------------------------------------------------
@@ -316,9 +303,11 @@ export class NotesStore {
 		const trimmed = name.trim();
 		if (!trimmed) return null;
 		if (this.labels.some((l) => l.name.toLowerCase() === trimmed.toLowerCase())) return null;
-		const label: Label = { id: uid(), name: trimmed, createdAt: Date.now() };
+		const now = Date.now();
+		const label: Label = { id: uid(), name: trimmed, createdAt: now, updatedAt: now };
 		this.labels = [...this.labels, label].sort((a, b) => a.name.localeCompare(b.name));
-		putLabel(label).catch(() => {});
+		this.mirrorToLS();
+		putLabel(label).catch((err) => this.recordPersistenceError('Could not save label', err));
 		return label;
 	}
 
@@ -327,9 +316,11 @@ export class NotesStore {
 		if (!trimmed) return;
 		const idx = this.labels.findIndex((l) => l.id === id);
 		if (idx === -1) return;
-		this.labels[idx] = { ...this.labels[idx], name: trimmed };
+		const renamed = { ...this.labels[idx], name: trimmed, updatedAt: Date.now() };
+		this.labels[idx] = renamed;
 		this.labels.sort((a, b) => a.name.localeCompare(b.name));
-		putLabel(this.labels[idx]).catch(() => {});
+		this.mirrorToLS();
+		putLabel(renamed).catch((err) => this.recordPersistenceError('Could not rename label', err));
 	}
 
 	removeLabel(id: string): void {
@@ -338,7 +329,7 @@ export class NotesStore {
 			n.labels.includes(id) ? { ...n, labels: n.labels.filter((l) => l !== id) } : n
 		);
 		this.mirrorToLS();
-		deleteLabel(id).catch(() => {});
+		deleteLabel(id).catch((err) => this.recordPersistenceError('Could not delete label', err));
 		this.notes.forEach((n) => this.persist(n.id));
 	}
 
@@ -374,48 +365,24 @@ export class NotesStore {
 		await bulkPutNotes(data.notes);
 		await bulkPutLabels(data.labels);
 		this.notes = [...data.notes].sort((a, b) => b.updatedAt - a.updatedAt);
-		this.labels = [...data.labels].sort((a, b) => a.name.localeCompare(b.name));
+		this.labels = data.labels.map(normalizeLabel).sort((a, b) => a.name.localeCompare(b.name));
+		this.mirrorToLS();
 	}
 
-	// Hard resync: re-read from localStorage mirror + IDB without re-seeding.
-	// Used by the refresh button. Does NOT reload the page or trigger theme switch.
+	// Reload all three layers. Mirror is only a fast-boot cache; IDB always participates so
+	// image blobs are rehydrated even when a mirror exists.
 	async hardResync() {
-		let notes: Note[] = [];
-		let labels: Label[] = [];
-
-		// 1. localStorage mirror first (sync, always up-to-date).
-		if (typeof localStorage !== "undefined") {
-			try {
-				const mNotes = localStorage.getItem(LS_NOTES_MIRROR);
-				if (mNotes) {
-					const parsed = stripMirrorPayload(mNotes);
-					if (parsed) notes = parsed;
-				}
-				const mLabels = localStorage.getItem(LS_LABELS_MIRROR);
-				if (mLabels) labels = JSON.parse(mLabels) as Label[];
-			} catch {}
-		}
-
-		// 2. If localStorage empty, try IDB.
-		if (notes.length === 0) {
-			try {
-				const [dbNotes, dbLabels] = await Promise.all([getAllNotes(), getAllLabels()]);
-				notes = dbNotes;
-				if (labels.length === 0) labels = dbLabels;
-			} catch {}
-		}
-
-		// 3. If still empty and never seeded, seed.
-		const seededFlag = typeof localStorage !== "undefined" ? localStorage.getItem("gkc-seeded") : null;
-		if (notes.length === 0 && labels.length === 0 && !seededFlag) {
-			localStorage.setItem("gkc-seeded", "1");
-			const seed = this.seedNotes();
-			this.notes = seed;
+		const mirrorNotes = readNotesMirror();
+		const mirrorLabels = readLabelsMirror().map(normalizeLabel);
+		try {
+			const [dbNotes, dbLabels] = await Promise.all([getAllNotes(), getAllLabels()]);
+			this.notes = mergeNoteLists(mirrorNotes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
+			this.labels = mergeLabelLists(mirrorLabels, dbLabels)
+				.map(normalizeLabel)
+				.sort((a, b) => a.name.localeCompare(b.name));
 			this.mirrorToLS();
-			Promise.all(seed.map((n) => putNote(n))).catch(() => {});
-		} else if (notes.length > 0) {
-			this.notes = notes.sort((a, b) => b.updatedAt - a.updatedAt);
-			if (labels.length > 0) this.labels = labels.sort((a, b) => a.name.localeCompare(b.name));
+		} catch (err) {
+			this.recordPersistenceError('Could not refresh from IndexedDB', err);
 		}
 		this.purgeOldTrash();
 	}
@@ -423,31 +390,56 @@ export class NotesStore {
 	// Persistence helpers --------------------------------------------------
 
 	private mirrorToLS() {
-		if (typeof localStorage === 'undefined') return;
-		try {
-			const notesSnapshot = this.notes.map((n) => noteForLocalStorage(n));
-			const labelsSnapshot = JSON.parse(JSON.stringify(this.labels));
-			localStorage.setItem(LS_NOTES_MIRROR, JSON.stringify(notesSnapshot));
-			localStorage.setItem(LS_LABELS_MIRROR, JSON.stringify(labelsSnapshot));
-		} catch (err) {
-			console.error('[notes] mirrorToLS error:', err);
-		}
+		writeNotesMirror(this.notes);
+		writeLabelsMirror(this.labels.map(normalizeLabel));
+	}
+
+	private recordPersistenceError(context: string, err: unknown): void {
+		const detail = err instanceof Error ? err.message : String(err);
+		this.lastPersistError = `${context}: ${detail}`;
+		console.error(`[notes] ${context}`, err);
 	}
 
 	private syncPushTimer: ReturnType<typeof setTimeout> | null = null;
-	private mirrorTimer: ReturnType<typeof setTimeout> | null = null;
-	private dirty = false; // tracks if notes changed since last sync
+	private noteRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	private noteRetryAttempts = new Map<string, number>();
+	private dirty = false;
+
+	private scheduleNoteRetry(id: string): void {
+		if (this.noteRetryTimers.has(id)) return;
+		const attempt = this.noteRetryAttempts.get(id) ?? 0;
+		const delay = Math.min(30_000, 1_000 * 2 ** attempt);
+		const timer = setTimeout(() => {
+			this.noteRetryTimers.delete(id);
+			const note = this.notes.find((item) => item.id === id);
+			if (!note) return;
+			putNote(note)
+				.then(() => {
+					this.noteRetryAttempts.delete(id);
+					this.lastPersistError = null;
+				})
+				.catch((err) => {
+					this.noteRetryAttempts.set(id, attempt + 1);
+					this.recordPersistenceError(`Could not retry note ${id}`, err);
+					this.scheduleNoteRetry(id);
+				});
+		}, delay);
+		this.noteRetryTimers.set(id, timer);
+	}
 
 	private persist(id: string) {
-		const n = this.notes.find((x) => x.id === id);
-		if (!n) return;
-		putNote(n).catch((err) => console.error('[notes] putNote error:', err));
-		// Debounce the localStorage mirror.
-		if (this.mirrorTimer) clearTimeout(this.mirrorTimer);
-		this.mirrorTimer = setTimeout(() => {
-			this.mirrorToLS();
-		}, 300);
-		// Mark dirty and schedule a cloud sync (5s debounce).
+		const note = this.notes.find((x) => x.id === id);
+		if (!note) return;
+		// Preserve a crash-safe, blob-free copy synchronously before async IDB work.
+		this.mirrorToLS();
+		putNote(note)
+			.then(() => {
+				this.lastPersistError = null;
+			})
+			.catch((err) => {
+				this.recordPersistenceError(`Could not save note ${id}`, err);
+				this.scheduleNoteRetry(id);
+			});
 		this.dirty = true;
 		this.scheduleSyncPush();
 	}
@@ -456,8 +448,12 @@ export class NotesStore {
 		if (this.syncPushTimer) clearTimeout(this.syncPushTimer);
 		this.syncPushTimer = setTimeout(async () => {
 			if (!this.dirty) return;
-			this.dirty = false;
-			await this.syncWithCloud();
+			const synced = await this.syncWithCloud();
+			if (synced) {
+				this.dirty = false;
+			} else if (this.dirty) {
+				this.scheduleSyncPush();
+			}
 		}, 5000);
 	}
 
@@ -471,61 +467,30 @@ export class NotesStore {
 		return this.doSync(false);
 	}
 
-	// Core sync — surgical updates, only touches notes that actually changed.
+	// Core sync. Full note snapshots include images; local IDB remains the authoritative
+	// device copy and the server applies deterministic per-record LWW merging.
 	private async doSync(indicate = false): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
-		const localNotes = this.notes.map((n) => noteForLocalStorage(n) as Note);
-		const localLabels = JSON.parse(JSON.stringify(this.labels));
+		const localNotes = this.notes.map(cloneNote);
+		const localLabels = this.labels.map(normalizeLabel);
 		try {
 			const result = await syncStore.sync(localNotes, localLabels, indicate);
 			if (!result.success || !result.notes) return false;
 
-			const remoteMap = new Map<string, Note>();
-			for (const n of result.notes as Note[]) remoteMap.set(n.id, n);
+			const mergedNotes = mergeNoteLists(this.notes, result.notes as Note[])
+				.sort((a, b) => b.updatedAt - a.updatedAt);
+			const mergedLabels = mergeLabelLists(this.labels, (result.labels ?? []) as Label[])
+				.map(normalizeLabel)
+				.sort((a, b) => a.name.localeCompare(b.name));
 
-			let updatedCount = 0;
-
-			for (let i = 0; i < this.notes.length; i++) {
-				const remote = remoteMap.get(this.notes[i].id);
-				if (remote) {
-					remoteMap.delete(this.notes[i].id);
-					if (remote.updatedAt > this.notes[i].updatedAt) {
-						this.notes[i] = mergeTwoNotes(this.notes[i], remote);
-						updatedCount++;
-					} else if (remote.updatedAt < this.notes[i].updatedAt) {
-						// keep local but ensure images not lost if remote had blobs
-						this.notes[i] = mergeTwoNotes(remote, this.notes[i]);
-					}
-				}
-			}
-
-			const newNotes = Array.from(remoteMap.values());
-
-			const remoteLabelsSorted = (result.labels || []).sort((a, b) => a.name.localeCompare(b.name));
-			const labelsChanged = JSON.stringify(remoteLabelsSorted) !== JSON.stringify(this.labels);
-
-			if (updatedCount === 0 && newNotes.length === 0 && !labelsChanged) {
-				return true;
-			}
-
-			if (newNotes.length > 0) {
-				this.notes = [...this.notes, ...newNotes];
-			}
-
-			if (newNotes.length > 0 || updatedCount > 0) {
-				this.notes = this.notes.sort((a, b) => b.updatedAt - a.updatedAt);
-			}
-
-			if (labelsChanged) {
-				this.labels = remoteLabelsSorted;
-			}
-
+			this.notes = mergedNotes;
+			this.labels = mergedLabels;
 			this.mirrorToLS();
-			bulkPutNotes(this.notes).catch(() => {});
-			bulkPutLabels(this.labels).catch(() => {});
+			await Promise.all([bulkPutNotes(mergedNotes), bulkPutLabels(mergedLabels)]);
+			this.lastPersistError = null;
 			return true;
 		} catch (err) {
-			console.error('[notes] doSync:', err);
+			this.recordPersistenceError('Cloud sync reconciliation failed', err);
 			return false;
 		}
 	}

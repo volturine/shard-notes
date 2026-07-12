@@ -2,41 +2,31 @@ import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { readSyncData, writeSyncData } from '$lib/server/syncStore';
 
-// POST /api/sync/register
-// Body: { username: string }
-// Returns: { syncCode: string } — a 6-digit code to link other devices.
-// If the username already exists, returns the existing sync code.
-
 export const POST: RequestHandler = async ({ request }) => {
-	const { username } = await request.json();
-
-	if (!username || typeof username !== 'string' || username.trim().length < 1) {
+	let body: { username?: unknown };
+	try {
+		body = await request.json();
+	} catch {
+		return json({ error: 'Invalid JSON body' }, { status: 400 });
+	}
+	if (typeof body.username !== 'string' || !body.username.trim()) {
 		return json({ error: 'Username is required' }, { status: 400 });
 	}
-
-	const data = readSyncData();
-	const key = username.trim().toLowerCase();
-
-	if (data[key]) {
-		return json(
-			{ error: 'An account with this username already exists. Use your sync code on Link device.' },
-			{ status: 409 }
-		);
+	try {
+		const data = readSyncData();
+		const username = body.username.trim().toLowerCase();
+		if (data[username]) {
+			return json({ error: 'An account with this username already exists. Use your sync code on Link device.' }, { status: 409 });
+		}
+		let syncCode = '';
+		do {
+			syncCode = String(Math.floor(100000 + Math.random() * 900000));
+		} while (Object.values(data).some((user) => user.syncCode === syncCode));
+		data[username] = { syncCode, notes: [], labels: [], updatedAt: Date.now() };
+		writeSyncData(data);
+		return json({ syncCode, username });
+	} catch (err) {
+		console.error('[sync] register failed:', err);
+		return json({ error: 'Sync storage is temporarily unavailable' }, { status: 503 });
 	}
-
-	// Generate a unique 6-digit sync code.
-	let syncCode = '';
-	do {
-		syncCode = String(Math.floor(100000 + Math.random() * 900000));
-	} while (Object.values(data).some((u) => u.syncCode === syncCode));
-
-	data[key] = {
-		syncCode,
-		notes: [],
-		labels: [],
-		updatedAt: Date.now()
-	};
-	writeSyncData(data);
-
-	return json({ syncCode, username: key });
 };

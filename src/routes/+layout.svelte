@@ -12,12 +12,10 @@
 	import { untrack } from 'svelte';
 	import { onMount } from 'svelte';
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
-	import { clearOversizedNoteStorage } from '$lib/noteStorage';
 
 	let { children } = $props();
 
 	onMount(() => {
-		clearOversizedNoteStorage();
 		attachSyncCloudIndicator(syncStore);
 	});
 

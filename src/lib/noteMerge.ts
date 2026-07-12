@@ -1,31 +1,47 @@
-// Merge local mirror rows with IndexedDB notes; never drop image blobs.
-import type { Note, NoteImage } from './types';
+// Deterministic, local-first merge helpers. A matching timestamp intentionally keeps the
+// first argument: callers pass the currently edited/local value first, avoiding surprise
+// overwrites when two devices happen to write in the same millisecond.
+import type { Label, Note, NoteImage } from './types';
 
 function hasImageData(images: NoteImage[] | undefined): boolean {
-	return (images ?? []).some((i) => (i.dataUrl?.length ?? 0) > 0);
+	return (images ?? []).some((image) => image.dataUrl?.length > 0);
 }
 
-export function mergeTwoNotes(a: Note, b: Note): Note {
-	const newer = a.updatedAt >= b.updatedAt ? a : b;
-	const older = newer === a ? b : a;
+export function mergeTwoNotes(primary: Note, secondary: Note): Note {
+	const newer = primary.updatedAt >= secondary.updatedAt ? primary : secondary;
+	const older = newer === primary ? secondary : primary;
 	const images = hasImageData(newer.images)
 		? (newer.images ?? [])
 		: hasImageData(older.images)
 			? (older.images ?? [])
 			: (newer.images ?? older.images ?? []);
-	return {
-		...newer,
-		images,
-		updatedAt: Math.max(a.updatedAt, b.updatedAt)
-	};
+	return { ...newer, images, updatedAt: Math.max(primary.updatedAt, secondary.updatedAt) };
 }
 
-export function mergeNoteLists(mirror: Note[], fromDb: Note[]): Note[] {
-	const map = new Map<string, Note>();
-	for (const n of mirror) map.set(n.id, n);
-	for (const db of fromDb) {
-		const existing = map.get(db.id);
-		map.set(db.id, existing ? mergeTwoNotes(existing, db) : db);
+export function mergeNoteLists(primary: Note[], secondary: Note[]): Note[] {
+	const byId = new Map<string, Note>();
+	for (const note of primary) byId.set(note.id, note);
+	for (const note of secondary) {
+		const existing = byId.get(note.id);
+		byId.set(note.id, existing ? mergeTwoNotes(existing, note) : note);
 	}
-	return Array.from(map.values());
+	return Array.from(byId.values());
+}
+
+function labelTime(label: Label): number {
+	return Number(label.updatedAt) || Number(label.createdAt) || 0;
+}
+
+export function mergeTwoLabels(primary: Label, secondary: Label): Label {
+	return labelTime(primary) >= labelTime(secondary) ? primary : secondary;
+}
+
+export function mergeLabelLists(primary: Label[], secondary: Label[]): Label[] {
+	const byId = new Map<string, Label>();
+	for (const label of primary) byId.set(label.id, label);
+	for (const label of secondary) {
+		const existing = byId.get(label.id);
+		byId.set(label.id, existing ? mergeTwoLabels(existing, label) : label);
+	}
+	return Array.from(byId.values());
 }

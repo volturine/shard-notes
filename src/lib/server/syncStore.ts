@@ -1,17 +1,17 @@
-// Server-side sync storage — stores user data as JSON on disk.
-// Simple and portable; works with SvelteKit's dev server and any Node adapter.
+// Server-side sync storage. Each write is temp-file + atomic rename: a process crash leaves
+// either the old complete JSON or the new complete JSON, never a truncated account file.
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
-interface SyncUser {
+export interface SyncUser {
 	syncCode: string;
 	notes: unknown[];
 	labels: unknown[];
 	updatedAt: number;
 }
 
-interface SyncData {
+export interface SyncData {
 	[username: string]: SyncUser;
 }
 
@@ -19,29 +19,31 @@ const DATA_DIR = 'sync-data';
 const DATA_FILE = join(DATA_DIR, 'users.json');
 
 function ensureDataFile(): void {
-	if (!existsSync(DATA_DIR)) {
-		mkdirSync(DATA_DIR, { recursive: true });
-	}
-	if (!existsSync(DATA_FILE)) {
-		writeFileSync(DATA_FILE, '{}', 'utf-8');
-	}
+	if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+	if (!existsSync(DATA_FILE)) writeFileSync(DATA_FILE, '{}\n', { encoding: 'utf-8', flag: 'wx' });
 }
 
 export function readSyncData(): SyncData {
-	try {
-		ensureDataFile();
-		const raw = readFileSync(DATA_FILE, 'utf-8');
-		return JSON.parse(raw) as SyncData;
-	} catch {
-		return {};
+	ensureDataFile();
+	const parsed: unknown = JSON.parse(readFileSync(DATA_FILE, 'utf-8'));
+	if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+		throw new Error('Sync data file is not a JSON object');
 	}
+	return parsed as SyncData;
 }
 
 export function writeSyncData(data: SyncData): void {
+	ensureDataFile();
+	const temp = `${DATA_FILE}.${process.pid}.${Date.now()}.tmp`;
 	try {
-		ensureDataFile();
-		writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
-	} catch {
-		// best effort
+		writeFileSync(temp, `${JSON.stringify(data, null, 2)}\n`, 'utf-8');
+		renameSync(temp, DATA_FILE);
+	} catch (err) {
+		try {
+			if (existsSync(temp)) unlinkSync(temp);
+		} catch (cleanupErr) {
+			console.error('[sync] failed to remove temporary file:', cleanupErr);
+		}
+		throw err;
 	}
 }

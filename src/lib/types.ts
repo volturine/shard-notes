@@ -56,6 +56,8 @@ export interface Label {
 	id: string;
 	name: string;
 	createdAt: number;
+	/** Changes on rename; used for deterministic offline/cloud conflict resolution. */
+	updatedAt: number;
 }
 
 /** Map of color -> hex used by Google Keep. */
