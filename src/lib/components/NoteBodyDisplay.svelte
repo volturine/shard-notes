@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Note } from '$lib/types';
+	import type { Note, NoteImage } from '$lib/types';
 	import { effectiveBody, parseBody, noteImages } from '$lib/checklistBody';
 	import { notesStore } from '$lib/stores/notes.svelte';
 
@@ -14,6 +14,16 @@
 	const body = $derived(effectiveBody(note));
 	const segments = $derived(parseBody(body));
 	const images = $derived(noteImages(note));
+	let focusedImage = $state<NoteImage | null>(null);
+
+	function focusImage(image: NoteImage, event: MouseEvent) {
+		event.stopPropagation();
+		focusedImage = image;
+	}
+
+	function closeImage() {
+		focusedImage = null;
+	}
 
 	function toggle(lineIndex: number) {
 		notesStore.toggleBodyChecklistLine(note.id, lineIndex);
@@ -23,12 +33,19 @@
 {#if images.length > 0}
 	<div class="mb-2 flex flex-wrap gap-2">
 		{#each images as img (img.id)}
-			<img
-				src={img.dataUrl}
-				alt={img.name ?? 'Photo'}
-				class="max-h-32 max-w-full rounded-lg object-cover"
-				loading="lazy"
-			/>
+			<button
+				type="button"
+				class="block max-w-full touch-manipulation rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+				onclick={(event) => focusImage(img, event)}
+				aria-label={`Open ${img.name ?? 'photo'}`}
+			>
+				<img
+					src={img.dataUrl}
+					alt={img.name ?? 'Photo'}
+					class="max-h-32 max-w-full rounded-lg object-cover"
+					loading="lazy"
+				/>
+			</button>
 		{/each}
 	</div>
 {/if}
@@ -68,3 +85,20 @@
 		{/if}
 	{/each}
 </div>
+
+<svelte:window onkeydown={(event) => event.key === 'Escape' && closeImage()} />
+
+{#if focusedImage}
+	<button
+		type="button"
+		class="fixed inset-0 z-[80] cursor-zoom-out bg-black/85"
+		onclick={closeImage}
+		aria-label="Close focused photo"
+	></button>
+	<div class="pointer-events-none fixed inset-0 z-[81] flex items-center justify-center p-4">
+		<div class="pointer-events-auto relative max-h-full max-w-full">
+			<img src={focusedImage.dataUrl} alt={focusedImage.name ?? 'Photo'} class="max-h-[90vh] max-w-[94vw] rounded-lg object-contain shadow-2xl" />
+			<button type="button" class="absolute -right-2 -top-2 h-10 w-10 rounded-full bg-black/75 text-xl text-white shadow-lg touch-manipulation" onclick={closeImage} aria-label="Close focused photo">✕</button>
+		</div>
+	</div>
+{/if}
