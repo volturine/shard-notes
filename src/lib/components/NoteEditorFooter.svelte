@@ -51,13 +51,13 @@
 
 	async function onPickImage(e: Event) {
 		const input = e.target as HTMLInputElement;
-		const file = input.files?.[0];
+		const files = Array.from(input.files ?? []);
 		input.value = '';
-		if (!file) return;
+		if (files.length === 0) return;
 		imageError = '';
 		try {
-			const img = await fileToNoteImage(file);
-			const nextImages = [...images, img];
+			const addedImages = await Promise.all(files.map(fileToNoteImage));
+			const nextImages = [...images, ...addedImages];
 			images = nextImages;
 			onImagesChange?.(nextImages);
 			if (noteId) {
@@ -124,7 +124,7 @@
 	onclick={(e) => e.stopPropagation()}
 >
 	<div class="flex items-center gap-1">
-		<input bind:this={fileInput} type="file" accept="image/*" class="hidden" onchange={onPickImage} />
+		<input bind:this={fileInput} type="file" accept="image/*" multiple class="hidden" onchange={onPickImage} />
 		<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Add photo" onclick={() => fileInput?.click()} aria-label="Add photo">
 			<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
 		</button>
