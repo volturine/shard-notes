@@ -152,7 +152,7 @@ class SyncStore {
 			const manifestPayload = JSON.stringify({
 				syncCode: this.account.syncCode,
 				manifest: {
-					notes: notes.map(({ id, updatedAt }) => ({ id, updatedAt, hash: noteHashes[id] })),
+					notes: notes.map(({ id, updatedAt, images }) => ({ id, updatedAt, hash: noteHashes[id], imageIds: (images ?? []).map((image) => image.id) })),
 					labels: labels.map(({ id, updatedAt }) => ({ id, updatedAt, hash: labelHashes[id] })),
 					tombstones
 				}
@@ -163,16 +163,22 @@ class SyncStore {
 			const uploadNoteIds = new Set((plan.data.uploadNoteIds as string[] | undefined) ?? []);
 			const uploadLabelIds = new Set((plan.data.uploadLabelIds as string[] | undefined) ?? []);
 			const uploadTombstones = (plan.data.uploadTombstones as Record<string, number> | undefined) ?? {};
-			const uploadNotes = notes.filter((note) => uploadNoteIds.has(note.id));
+			const knownImageIds = (plan.data.knownImageIds as Record<string, string[]> | undefined) ?? {};
+			const uploadNotes = notes.filter((note) => uploadNoteIds.has(note.id)).map((note) => ({
+				...note,
+				images: (note.images ?? []).map((image) => knownImageIds[note.id]?.includes(image.id) ? { ...image, dataUrl: '' } : image)
+			}));
 			const uploadLabels = labels.filter((label) => uploadLabelIds.has(label.id));
 			let canonical: SyncResult = { success: true, notes: [], labels: [], tombstones: {} };
 			if (uploadNotes.length || uploadLabels.length || Object.keys(uploadTombstones).length) {
-				const uploadPayload = JSON.stringify({ syncCode: this.account.syncCode, notes: uploadNotes, labels: uploadLabels, tombstones: uploadTombstones, hashes: { notes: Object.fromEntries(uploadNotes.map((note) => [note.id, noteHashes[note.id]])), labels: Object.fromEntries(uploadLabels.map((label) => [label.id, labelHashes[label.id]])) } });
+				const uploadNoteHashes = Object.fromEntries(await Promise.all(uploadNotes.map(async (note) => [note.id, await sha256(note)])));
+				const uploadLabelHashes = Object.fromEntries(await Promise.all(uploadLabels.map(async (label) => [label.id, await sha256(label)])));
+				const uploadPayload = JSON.stringify({ syncCode: this.account.syncCode, notes: uploadNotes, labels: uploadLabels, tombstones: uploadTombstones, hashes: { notes: Object.fromEntries(uploadNotes.map((note) => [note.id, uploadNoteHashes[note.id]])), labels: Object.fromEntries(uploadLabels.map((label) => [label.id, uploadLabelHashes[label.id]])) } });
 				canonical = await this.sendSyncRequest('/api/sync/delta', uploadPayload, new Blob([uploadPayload]).size, indicate);
 				if (!canonical.success) return this.fail(canonical);
 				const ack = canonical.data?.ack as { notes?: Record<string, string>; labels?: Record<string, string> } | undefined;
-				for (const note of uploadNotes) if (ack?.notes?.[note.id] !== noteHashes[note.id]) return this.fail({ success: false, error: `Server hash acknowledgement failed for note ${note.id}` });
-				for (const label of uploadLabels) if (ack?.labels?.[label.id] !== labelHashes[label.id]) return this.fail({ success: false, error: `Server hash acknowledgement failed for label ${label.id}` });
+				for (const note of uploadNotes) if (ack?.notes?.[note.id] !== uploadNoteHashes[note.id]) return this.fail({ success: false, error: `Server hash acknowledgement failed for note ${note.id}` });
+				for (const label of uploadLabels) if (ack?.labels?.[label.id] !== uploadLabelHashes[label.id]) return this.fail({ success: false, error: `Server hash acknowledgement failed for label ${label.id}` });
 			}
 
 			this.lastSync = Date.now();

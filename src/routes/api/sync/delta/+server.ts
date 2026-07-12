@@ -43,11 +43,17 @@ export const POST: RequestHandler = async ({ request }) => {
 				const { hash: _hash, ...plain } = record;
 				return plain;
 			};
+			const knownImageIds = Object.fromEntries(notePlan.uploadIds.map((noteId) => {
+				const stored = user.notes.find((note) => note.id === noteId);
+				const storedImages = ((stored?.images as Array<{ id: string; dataUrl?: string }> | undefined) ?? []);
+				return [noteId, storedImages.filter((image) => (image.dataUrl?.length ?? 0) > 20).map((image) => image.id)];
+			}));
 			return response({
 				notes: notePlan.download.map(stripHash),
 				labels: labelPlan.download.map(stripHash),
 				tombstones: notePlan.downloadTombstones,
 				uploadNoteIds: notePlan.uploadIds,
+				knownImageIds,
 				uploadLabelIds: labelPlan.uploadIds,
 				uploadTombstones: notePlan.uploadTombstones
 			});
@@ -64,8 +70,22 @@ export const POST: RequestHandler = async ({ request }) => {
 		for (const label of body.labels as SyncLabel[]) {
 			if (!declaredHashes?.labels?.[label.id] || declaredHashes.labels[label.id] !== await sha256(label)) return json({ error: `Label hash verification failed for ${label.id}` }, { status: 409 });
 		}
+		const storedById = new Map(user.notes.map((note) => [note.id, note]));
+		const hydratedNotes = (body.notes as SyncNote[]).map((note) => {
+			const incomingImages = ((note.images as Array<{ id: string; dataUrl?: string }> | undefined) ?? []);
+			return {
+				...note,
+				images: incomingImages.map((image) => {
+					if ((image.dataUrl?.length ?? 0) > 20) return image;
+					const storedImages = ((storedById.get(note.id)?.images as Array<{ id: string; dataUrl?: string }> | undefined) ?? []);
+					const stored = storedImages.find((candidate) => candidate.id === image.id);
+					if (!stored?.dataUrl) throw new Error(`Missing image payload for ${note.id}/${image.id}`);
+					return { ...image, dataUrl: stored.dataUrl };
+				})
+			};
+		}) as SyncNote[];
 		user.tombstones = mergeTombstones(user.tombstones, incomingTombstones);
-		user.notes = mergeNotes(body.notes as SyncNote[], user.notes)
+		user.notes = mergeNotes(hydratedNotes, user.notes)
 			.filter((note) => (Number(user.tombstones?.[note.id]) || 0) < Number(note.updatedAt));
 		user.labels = mergeLabels(body.labels as SyncLabel[], user.labels);
 		user.updatedAt = Date.now();
