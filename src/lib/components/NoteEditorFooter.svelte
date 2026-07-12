@@ -4,6 +4,7 @@
 	import { insertCodeBlock } from '$lib/checklistBody';
 	import { fileToNoteImage } from '$lib/noteImages';
 	import { notesStore } from '$lib/stores/notes.svelte';
+	import { sha256 } from '$lib/syncHash';
 	import { formatStorageError } from '$lib/imageBlob';
 
 	let {
@@ -57,7 +58,16 @@
 		imageError = '';
 		try {
 			const addedImages = await Promise.all(files.map(fileToNoteImage));
-			const nextImages = [...images, ...addedImages];
+			const knownHashes = new Set(await Promise.all(images.map((image) => sha256(image.dataUrl))));
+			const uniqueImages: NoteImage[] = [];
+			for (const image of addedImages) {
+				const hash = await sha256(image.dataUrl);
+				if (knownHashes.has(hash)) continue;
+				knownHashes.add(hash);
+				uniqueImages.push(image);
+			}
+			if (uniqueImages.length === 0) return;
+			const nextImages = [...images, ...uniqueImages];
 			images = nextImages;
 			onImagesChange?.(nextImages);
 			if (noteId) {
@@ -100,11 +110,11 @@
 {/if}
 
 {#if images.length > 0}
-	<div class="flex flex-wrap gap-2 px-3 pb-2">
+	<div class="grid max-h-44 grid-cols-3 gap-2 overflow-y-auto overscroll-contain px-3 pb-2 sm:grid-cols-4">
 		{#each images as img, index (img.id)}
 			<div class="relative">
-				<button type="button" class="block max-w-full rounded-lg touch-manipulation" onclick={() => focusedImageIndex = index} aria-label={`Open ${img.name ?? 'photo'}`}>
-					<img src={img.dataUrl} alt={img.name ?? 'Photo'} class="max-h-40 max-w-full rounded-lg object-cover" />
+				<button type="button" class="block aspect-square w-full overflow-hidden rounded-lg touch-manipulation" onclick={() => focusedImageIndex = index} aria-label={`Open ${img.name ?? 'photo'}`}>
+					<img src={img.dataUrl} alt={img.name ?? 'Photo'} class="h-full w-full object-cover" />
 				</button>
 				<button
 					type="button"
