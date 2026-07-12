@@ -471,6 +471,42 @@ export class NotesStore {
 		}, 5000);
 	}
 
+	// Replace this device's local data with the already-linked account without uploading any
+	// local records or tombstones first. The cloud response is obtained before local storage is cleared.
+	async replaceWithCloudManual(): Promise<boolean> {
+		if (!syncStore.isLoggedIn) return false;
+		try {
+			const result = await syncStore.sync([], [], {}, true);
+			if (!result.success || !result.notes) {
+				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
+				return false;
+			}
+			const tombstones = result.tombstones ?? {};
+			const cloudNotes = (result.notes as Note[])
+				.filter((note) => (Number(tombstones[note.id]) || 0) < note.updatedAt)
+				.sort((a, b) => b.updatedAt - a.updatedAt);
+			const cloudLabels = ((result.labels ?? []) as Label[])
+				.map(normalizeLabel)
+				.sort((a, b) => a.name.localeCompare(b.name));
+
+			await clearAllNotes();
+			await clearAllLabels();
+			await bulkPutNotes(cloudNotes);
+			await bulkPutLabels(cloudLabels);
+			this.notes = cloudNotes;
+			this.labels = cloudLabels;
+			this.deletedNoteIds = { ...tombstones };
+			writeTombstones(this.deletedNoteIds);
+			this.mirrorToLS();
+			this.dirty = false;
+			this.lastPersistError = null;
+			return true;
+		} catch (err) {
+			this.recordPersistenceError('Could not replace this device with cloud notes', err);
+			return false;
+		}
+	}
+
 	// Manual sync — caller shows UI feedback (spinning cloud icon).
 	async syncWithCloudManual(): Promise<boolean> {
 		return this.doSync(true);

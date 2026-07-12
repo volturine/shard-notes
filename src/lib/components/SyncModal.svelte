@@ -9,7 +9,7 @@
 		onClose: () => void;
 	} = $props();
 
-	let mode = $state<'menu' | 'register' | 'link' | 'linked'>(syncStore.isLoggedIn ? 'linked' : 'menu');
+	let mode = $state<'menu' | 'register' | 'link' | 'link-choice' | 'linked'>(syncStore.isLoggedIn ? 'linked' : 'menu');
 	let username = $state('');
 	let syncCodeInput = $state('');
 	let error = $state('');
@@ -49,22 +49,38 @@
 		}
 	}
 
-	async function doLink() {
+	async function chooseLinkData(keepLocalNotes: boolean) {
+		error = '';
+		loading = true;
+		const result = await syncStore.linkDevice(syncCodeInput.trim());
+		if (!result.success) {
+			loading = false;
+			error = result.error || 'Invalid sync code';
+			mode = 'link';
+			return;
+		}
+		const synced = keepLocalNotes
+			? await notesStore.syncWithCloudManual()
+			: await notesStore.replaceWithCloudManual();
+		loading = false;
+		if (!synced && !keepLocalNotes) {
+			const failure = syncStore.lastError || notesStore.lastPersistError;
+			syncStore.logout();
+			mode = 'link-choice';
+			error = failure || 'Could not download the account notes. This device was not linked and its local notes were kept.';
+			return;
+		}
+		mode = 'linked';
+		if (!synced) error = syncStore.lastError || 'Device linked, but the first sync failed';
+	}
+
+	function doLink() {
 		if (!syncCodeInput.trim()) {
 			error = 'Enter your sync code';
 			return;
 		}
 		error = '';
-		loading = true;
-		const result = await syncStore.linkDevice(syncCodeInput.trim());
-		loading = false;
-		if (result.success) {
-			const synced = await notesStore.syncWithCloudManual();
-			mode = 'linked';
-			if (!synced) error = syncStore.lastError || 'Device linked, but the first sync failed';
-		} else {
-			error = result.error || 'Invalid sync code';
-		}
+		mode = 'link-choice';
 	}
 
 	function finishSync(id: number, success: boolean) {
@@ -273,6 +289,23 @@
 				>{loading ? 'Creating…' : 'Get my sync code'}</button>
 				<button onclick={() => { mode = 'menu'; error = ''; }} class="w-full text-xs text-[var(--gkc-text-muted)] hover:underline">← Back</button>
 			</div>
+		{:else if mode === 'link-choice'}
+			<div class="space-y-4">
+				<div>
+					<h3 class="text-base font-medium text-[var(--gkc-text)]">Use this device’s existing notes?</h3>
+					<p class="mt-1 text-sm text-[var(--gkc-text-muted)]">Choose what happens to the notes already saved on this device before it joins this sync account.</p>
+				</div>
+				<button type="button" onclick={() => void chooseLinkData(true)} disabled={loading} class="w-full rounded-lg bg-blue-600 px-3 py-3 text-left text-sm font-medium text-white disabled:opacity-50">
+					Keep and merge local notes
+					<span class="mt-0.5 block text-xs font-normal text-blue-100">Adds this device’s notes to the account and merges any matches.</span>
+				</button>
+				<button type="button" onclick={() => void chooseLinkData(false)} disabled={loading} class="w-full rounded-lg border border-red-500/40 px-3 py-3 text-left text-sm font-medium text-red-600 dark:text-red-400 disabled:opacity-50">
+					Discard local notes
+					<span class="mt-0.5 block text-xs font-normal opacity-80">Removes this device’s current notes and downloads only the account’s notes.</span>
+				</button>
+				{#if error}<div class="text-sm text-red-600 dark:text-red-400">{error}</div>{/if}
+				<button type="button" onclick={() => { mode = 'link'; error = ''; }} disabled={loading} class="w-full text-xs text-[var(--gkc-text-muted)] hover:underline">← Back</button>
+			</div>
 		{:else if mode === 'link'}
 			<!-- Link device -->
 			<div class="space-y-3">
@@ -292,7 +325,7 @@
 					onclick={doLink}
 					disabled={loading}
 					class="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-				>{loading ? 'Linking…' : 'Link device & sync'}</button>
+				>{loading ? 'Linking…' : 'Continue'}</button>
 				<button onclick={() => { mode = 'menu'; error = ''; }} class="w-full text-xs text-[var(--gkc-text-muted)] hover:underline">← Back</button>
 			</div>
 		{/if}
