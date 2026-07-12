@@ -20,7 +20,7 @@ export interface SyncProgress {
 	totalBytes: number | null;
 }
 
-type SyncResult = { success: boolean; notes?: Note[]; labels?: Label[]; error?: string };
+type SyncResult = { success: boolean; notes?: Note[]; labels?: Label[]; tombstones?: Record<string, number>; data?: Record<string, unknown>; error?: string };
 
 class SyncStore {
 	account = $state<SyncAccount | null>(null);
@@ -99,10 +99,10 @@ class SyncStore {
 		}
 	}
 
-	private sendSyncRequest(payload: string, uploadBytes: number, indicate: boolean): Promise<SyncResult> {
+	private sendSyncRequest(path: string, payload: string, uploadBytes: number, indicate: boolean): Promise<SyncResult> {
 		return new Promise((resolve) => {
 			const xhr = new XMLHttpRequest();
-			xhr.open('POST', '/api/sync/sync');
+			xhr.open('POST', path);
 			xhr.timeout = 60_000;
 			xhr.setRequestHeader('Content-Type', 'application/json');
 
@@ -132,7 +132,7 @@ class SyncStore {
 					resolve({ success: false, error: typeof data.error === 'string' ? data.error : `Sync request failed (${xhr.status})` });
 					return;
 				}
-				resolve({ success: true, notes: data.notes as Note[], labels: data.labels as Label[] });
+				resolve({ success: true, notes: data.notes as Note[], labels: data.labels as Label[], tombstones: data.tombstones as Record<string, number> | undefined, data });
 			};
 			xhr.onerror = () => resolve({ success: false, error: 'Sync network error' });
 			xhr.ontimeout = () => resolve({ success: false, error: 'Sync timed out after 60 seconds' });
@@ -141,30 +141,54 @@ class SyncStore {
 		});
 	}
 
-	/** XMLHttpRequest provides real upload/download byte events; fetch does not on iOS Safari. */
-	async sync(notes: Note[], labels: Label[], indicate = false): Promise<SyncResult> {
+	/** Two-phase delta sync: manifests first, then only changed records/photos. */
+	async sync(notes: Note[], labels: Label[], tombstones: Record<string, number> = {}, indicate = false): Promise<SyncResult> {
 		if (!this.account) return { success: false, error: 'Not logged in' };
 		if (indicate) this.onSyncStart?.();
-		const payload = JSON.stringify({ syncCode: this.account.syncCode, notes, labels });
-		const uploadBytes = new Blob([payload]).size;
 		try {
-			const result = await this.sendSyncRequest(payload, uploadBytes, indicate);
-			if (!result.success) {
-				this.lastError = result.error || 'Sync failed';
-				return result;
+			const manifestPayload = JSON.stringify({
+				syncCode: this.account.syncCode,
+				manifest: {
+					notes: notes.map(({ id, updatedAt }) => ({ id, updatedAt })),
+					labels: labels.map(({ id, updatedAt }) => ({ id, updatedAt })),
+					tombstones
+				}
+			});
+			const plan = await this.sendSyncRequest('/api/sync/delta', manifestPayload, new Blob([manifestPayload]).size, indicate);
+			if (!plan.success || !plan.data) return this.fail(plan);
+
+			const uploadNoteIds = new Set((plan.data.uploadNoteIds as string[] | undefined) ?? []);
+			const uploadLabelIds = new Set((plan.data.uploadLabelIds as string[] | undefined) ?? []);
+			const uploadTombstones = (plan.data.uploadTombstones as Record<string, number> | undefined) ?? {};
+			const uploadNotes = notes.filter((note) => uploadNoteIds.has(note.id));
+			const uploadLabels = labels.filter((label) => uploadLabelIds.has(label.id));
+			let canonical: SyncResult = { success: true, notes: [], labels: [], tombstones: {} };
+			if (uploadNotes.length || uploadLabels.length || Object.keys(uploadTombstones).length) {
+				const uploadPayload = JSON.stringify({ syncCode: this.account.syncCode, notes: uploadNotes, labels: uploadLabels, tombstones: uploadTombstones });
+				canonical = await this.sendSyncRequest('/api/sync/delta', uploadPayload, new Blob([uploadPayload]).size, indicate);
+				if (!canonical.success) return this.fail(canonical);
 			}
+
 			this.lastSync = Date.now();
 			this.lastError = null;
 			this.saveStatus();
-			return result;
+			return {
+				success: true,
+				notes: [...(plan.notes ?? []), ...(canonical.notes ?? [])],
+				labels: [...(plan.labels ?? []), ...(canonical.labels ?? [])],
+				tombstones: { ...(plan.tombstones ?? {}), ...(canonical.tombstones ?? {}) }
+			};
 		} catch (err) {
-			const error = err instanceof Error ? `Sync network error: ${err.message}` : 'Sync network error';
-			this.lastError = error;
-			return { success: false, error };
+			return this.fail({ success: false, error: err instanceof Error ? `Sync network error: ${err.message}` : 'Sync network error' });
 		} finally {
 			if (indicate) this.progress = null;
 			if (indicate) this.onSyncEnd?.();
 		}
+	}
+
+	private fail(result: SyncResult): SyncResult {
+		this.lastError = result.error || 'Sync failed';
+		return { success: false, error: this.lastError };
 	}
 
 	logout(): void {

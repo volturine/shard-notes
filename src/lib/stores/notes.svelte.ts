@@ -18,12 +18,14 @@ import { syncStore } from '$lib/stores/sync.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { effectiveBody, noteImages, toggleLineAt } from '$lib/checklistBody';
 import { readLabelsMirror, readNotesMirror, writeLabelsMirror, writeNotesMirror } from '$lib/noteStorage';
+import { readTombstones, writeTombstones } from '$lib/syncTombstones';
 
 export class NotesStore {
 	notes = $state<Note[]>([]);
 	labels = $state<Label[]>([]);
 	loaded = $state(false);
 	lastPersistError = $state<string | null>(null);
+	deletedNoteIds = $state<Record<string, number>>(readTombstones());
 
 	constructor() {
 		this.notes = readNotesMirror();
@@ -148,6 +150,7 @@ export class NotesStore {
 			(n) => n.trashed && daysSinceTrashed(n.trashedAt) >= TRASH_PURGE_DAYS
 		);
 		if (toPurge.length === 0) return;
+		this.markNotesDeleted(toPurge.map((note) => note.id));
 		this.notes = this.notes.filter((n) => !toPurge.find((p) => p.id === n.id));
 		Promise.all(toPurge.map((p) => deleteNote(p.id))).catch((err) =>
 			this.recordPersistenceError('Could not purge expired trash', err)
@@ -284,6 +287,7 @@ export class NotesStore {
 	}
 
 	deleteNoteForever(id: string): void {
+		this.markNotesDeleted([id]);
 		this.notes = this.notes.filter((n) => n.id !== id);
 		this.mirrorToLS();
 		deleteNote(id).catch((err) => this.recordPersistenceError(`Could not delete note ${id}`, err));
@@ -291,6 +295,7 @@ export class NotesStore {
 
 	emptyTrash(): void {
 		const ids = this.trashedNotes.map((n) => n.id);
+		this.markNotesDeleted(ids);
 		this.notes = this.notes.filter((n) => !n.trashed);
 		this.mirrorToLS();
 		Promise.all(ids.map((id) => deleteNote(id))).catch((err) =>
@@ -389,6 +394,15 @@ export class NotesStore {
 
 	// Persistence helpers --------------------------------------------------
 
+	private markNotesDeleted(ids: string[]): void {
+		if (ids.length === 0) return;
+		const deletedAt = Date.now();
+		for (const id of ids) this.deletedNoteIds[id] = deletedAt;
+		writeTombstones(this.deletedNoteIds);
+		this.dirty = true;
+		this.scheduleSyncPush();
+	}
+
 	private mirrorToLS() {
 		writeNotesMirror(this.notes);
 		writeLabelsMirror(this.labels.map(normalizeLabel));
@@ -474,16 +488,22 @@ export class NotesStore {
 		const localNotes = this.notes.map(cloneNote);
 		const localLabels = this.labels.map(normalizeLabel);
 		try {
-			const result = await syncStore.sync(localNotes, localLabels, indicate);
+			const result = await syncStore.sync(localNotes, localLabels, this.deletedNoteIds, indicate);
 			if (!result.success || !result.notes) {
 				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
 				return false;
 			}
 
-			const remoteNotes = result.notes as Note[];
+			const incomingTombstones = result.tombstones ?? {};
+			for (const [id, deletedAt] of Object.entries(incomingTombstones)) {
+				if ((Number(deletedAt) || 0) > (this.deletedNoteIds[id] || 0)) this.deletedNoteIds[id] = Number(deletedAt);
+			}
+			writeTombstones(this.deletedNoteIds);
+			const remoteNotes = (result.notes as Note[]).filter((note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt);
 			const localById = new Map(this.notes.map((note) => [note.id, note]));
 			const remoteById = new Map(remoteNotes.map((note) => [note.id, note]));
 			const mergedNotes = mergeNoteLists(this.notes, remoteNotes)
+				.filter((note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt)
 				.sort((a, b) => b.updatedAt - a.updatedAt);
 			const mergedLabels = mergeLabelLists(this.labels, (result.labels ?? []) as Label[])
 				.map(normalizeLabel)
@@ -502,11 +522,15 @@ export class NotesStore {
 				return !localHasImageData && mergedHasImageData;
 			});
 
+			const tombstonedLocalIds = this.notes
+				.filter((note) => (this.deletedNoteIds[note.id] || 0) >= note.updatedAt)
+				.map((note) => note.id);
 			this.notes = mergedNotes;
 			this.labels = mergedLabels;
 			this.mirrorToLS();
 			await Promise.all([
 				...notesToPersist.map((note) => putNote(note)),
+				...tombstonedLocalIds.map((id) => deleteNote(id)),
 				...(labelsChanged ? [bulkPutLabels(mergedLabels)] : [])
 			]);
 			this.lastPersistError = null;
