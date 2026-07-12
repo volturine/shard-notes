@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
 	import type { NoteImage } from '$lib/types';
 	import { insertCodeBlock } from '$lib/checklistBody';
 	import { fileToNoteImage } from '$lib/noteImages';
@@ -34,6 +35,7 @@
 	} = $props();
 
 	let moreOpen = $state(false);
+	let focusedImageIndex = $state<number | null>(null);
 	let imageError = $state('');
 	let fileInput: HTMLInputElement | null = $state(null);
 
@@ -99,9 +101,11 @@
 
 {#if images.length > 0}
 	<div class="flex flex-wrap gap-2 px-3 pb-2">
-		{#each images as img (img.id)}
+		{#each images as img, index (img.id)}
 			<div class="relative">
-				<img src={img.dataUrl} alt={img.name ?? 'Photo'} class="max-h-40 max-w-full rounded-lg object-cover" />
+				<button type="button" class="block max-w-full rounded-lg touch-manipulation" onclick={() => focusedImageIndex = index} aria-label={`Open ${img.name ?? 'photo'}`}>
+					<img src={img.dataUrl} alt={img.name ?? 'Photo'} class="max-h-40 max-w-full rounded-lg object-cover" />
+				</button>
 				<button
 					type="button"
 					class="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-xs text-white touch-manipulation"
@@ -112,6 +116,8 @@
 		{/each}
 	</div>
 {/if}
+
+<PhotoFullscreen {images} bind:activeIndex={focusedImageIndex} />
 
 <footer
 	class="relative flex shrink-0 items-center justify-between border-t border-black/5 px-3 py-2 dark:border-white/10"

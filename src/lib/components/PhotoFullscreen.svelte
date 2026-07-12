@@ -1,0 +1,53 @@
+<script lang="ts">
+	import type { NoteImage } from '$lib/types';
+
+	let {
+		images,
+		activeIndex = $bindable<number | null>(null)
+	}: {
+		images: NoteImage[];
+		activeIndex?: number | null;
+	} = $props();
+
+	let touchStartX = 0;
+
+	function close() {
+		activeIndex = null;
+	}
+
+	function onTouchStart(event: TouchEvent) {
+		touchStartX = event.touches[0]?.clientX ?? 0;
+	}
+
+	function onTouchEnd(event: TouchEvent) {
+		if (activeIndex === null || images.length < 2) return;
+		const deltaX = (event.changedTouches[0]?.clientX ?? touchStartX) - touchStartX;
+		if (Math.abs(deltaX) < 48) return;
+		activeIndex = deltaX < 0
+			? (activeIndex + 1) % images.length
+			: (activeIndex - 1 + images.length) % images.length;
+	}
+</script>
+
+<svelte:window onkeydown={(event) => event.key === 'Escape' && close()} />
+
+{#if activeIndex !== null && images[activeIndex]}
+	<button
+		type="button"
+		class="fixed inset-0 z-[80] cursor-zoom-out bg-black"
+		onclick={close}
+		aria-label="Close photo"
+	></button>
+	<div
+		class="pointer-events-none fixed inset-0 z-[81] flex items-center justify-center"
+		ontouchstart={onTouchStart}
+		ontouchend={onTouchEnd}
+	>
+		<img
+			src={images[activeIndex].dataUrl}
+			alt={images[activeIndex].name ?? 'Photo'}
+			class="pointer-events-auto max-h-[100dvh] max-w-full select-none object-contain"
+			draggable="false"
+		/>
+	</div>
+{/if}
