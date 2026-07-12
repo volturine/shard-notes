@@ -15,7 +15,9 @@
 	let error = $state('');
 	let loading = $state(false);
 	let syncing = $state(false);
+	let syncPending = $state(false);
 	let syncSuccess = $state(false);
+	let syncRequestId = 0;
 
 	async function doRegister() {
 		if (!username.trim()) {
@@ -56,10 +58,9 @@
 		}
 	}
 
-	async function doSync() {
-		error = '';
-		syncing = true;
-		const success = await notesStore.syncWithCloudManual();
+	function finishSync(id: number, success: boolean) {
+		if (id !== syncRequestId) return;
+		syncPending = false;
 		syncing = false;
 		if (success) {
 			syncSuccess = true;
@@ -69,6 +70,32 @@
 		} else {
 			error = syncStore.lastError || 'Sync failed — check your connection';
 		}
+	}
+
+	function doSync() {
+		if (syncPending) return;
+		error = '';
+		syncSuccess = false;
+		syncing = true;
+		syncPending = true;
+		const id = ++syncRequestId;
+
+		// Settings gets the same short feedback as the topbar. It must not look stuck
+		// while a large photo upload continues over a slow iPhone/Tailscale connection.
+		setTimeout(() => {
+			if (id === syncRequestId) syncing = false;
+		}, 2000);
+		setTimeout(() => {
+			if (id !== syncRequestId || !syncPending) return;
+			syncRequestId++;
+			syncPending = false;
+			syncing = false;
+			error = 'Sync timed out after 60 seconds';
+		}, 62_000);
+
+		void notesStore.syncWithCloudManual()
+			.then((success) => finishSync(id, success))
+			.catch(() => finishSync(id, false));
 	}
 
 	function doLogout() {
@@ -151,6 +178,8 @@
 					{#if syncing}
 						<span class="animate-spin">☁️</span>
 						<span class="text-[var(--gkc-text-muted)]">Syncing…</span>
+					{:else if syncPending}
+						<span class="text-[var(--gkc-text-muted)]">Sync continues in background…</span>
 					{:else if syncSuccess}
 						<span class="text-green-600 dark:text-green-400">✓ Synced</span>
 					{:else}
@@ -161,10 +190,10 @@
 				<!-- Single sync button -->
 				<button
 					onclick={doSync}
-					disabled={syncing || loading}
+					disabled={syncPending || loading}
 					class="w-full rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
 				>
-					{syncing ? 'Syncing…' : '🔄 Sync now'}
+					{syncing ? 'Syncing…' : syncPending ? 'Sync in background…' : '🔄 Sync now'}
 				</button>
 
 				{#if error}
