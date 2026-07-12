@@ -34,7 +34,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		user.labels = labels;
 		user.updatedAt = Date.now();
 		writeSyncData(data);
-		return json({ notes, labels, updatedAt: user.updatedAt });
+		const responseBody = JSON.stringify({ notes, labels, updatedAt: user.updatedAt });
+		return new Response(responseBody, {
+			headers: {
+				'content-type': 'application/json',
+				'content-length': String(new TextEncoder().encode(responseBody).byteLength)
+			}
+		});
 	} catch (err) {
 		console.error('[sync] merge failed:', err);
 		return json({ error: 'Sync storage is temporarily unavailable' }, { status: 503 });

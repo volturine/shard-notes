@@ -19,6 +19,15 @@
 	let syncSuccess = $state(false);
 	let syncRequestId = 0;
 
+	function formatBytes(bytes: number): string {
+		if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
+
+	function progressPercent(loaded: number, total: number | null): number {
+		return total && total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
+	}
+
 	async function doRegister() {
 		if (!username.trim()) {
 			error = 'Enter a username';
@@ -174,12 +183,21 @@
 				</div>
 
 				<!-- Sync status -->
-				<div class="flex items-center gap-2 text-sm">
-					{#if syncing}
-						<span class="animate-spin">☁️</span>
-						<span class="text-[var(--gkc-text-muted)]">Syncing…</span>
+				<div class="text-sm">
+					{#if syncStore.progress}
+						{@const progress = syncStore.progress}
+						{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
+						<div class="mb-1 flex items-center justify-between text-[var(--gkc-text-muted)]">
+							<span>{progress.phase === 'upload' ? 'Uploading backup' : 'Downloading merged backup'}</span>
+							<span>{formatBytes(progress.loadedBytes)}{progress.totalBytes ? ` / ${formatBytes(progress.totalBytes)} (${percent}%)` : ''}</span>
+						</div>
+						<div class="h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+							<div class="h-full rounded-full bg-blue-600 transition-[width] duration-150" style={`width: ${progress.totalBytes ? percent : 100}%`}></div>
+						</div>
+					{:else if syncing}
+						<div class="flex items-center gap-2 text-[var(--gkc-text-muted)]"><span class="animate-spin">☁️</span><span>Preparing sync…</span></div>
 					{:else if syncPending}
-						<span class="text-[var(--gkc-text-muted)]">Sync continues in background…</span>
+						<span class="text-[var(--gkc-text-muted)]">Server is merging your backup…</span>
 					{:else if syncSuccess}
 						<span class="text-green-600 dark:text-green-400">✓ Synced</span>
 					{:else}
