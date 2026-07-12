@@ -480,16 +480,35 @@ export class NotesStore {
 				return false;
 			}
 
-			const mergedNotes = mergeNoteLists(this.notes, result.notes as Note[])
+			const remoteNotes = result.notes as Note[];
+			const localById = new Map(this.notes.map((note) => [note.id, note]));
+			const remoteById = new Map(remoteNotes.map((note) => [note.id, note]));
+			const mergedNotes = mergeNoteLists(this.notes, remoteNotes)
 				.sort((a, b) => b.updatedAt - a.updatedAt);
 			const mergedLabels = mergeLabelLists(this.labels, (result.labels ?? []) as Label[])
 				.map(normalizeLabel)
 				.sort((a, b) => a.name.localeCompare(b.name));
+			const labelsChanged = JSON.stringify(this.labels) !== JSON.stringify(mergedLabels);
+
+			// Do not rewrite every IDB image blob after every sync. Persist only remote notes that
+			// actually changed locally, including equal-timestamp rows that supplied missing image data.
+			const notesToPersist = mergedNotes.filter((merged) => {
+				const local = localById.get(merged.id);
+				const remote = remoteById.get(merged.id);
+				if (!local || !remote) return !local;
+				if (remote.updatedAt > local.updatedAt) return true;
+				const localHasImageData = (local.images ?? []).some((image) => image.dataUrl.length > 0);
+				const mergedHasImageData = (merged.images ?? []).some((image) => image.dataUrl.length > 0);
+				return !localHasImageData && mergedHasImageData;
+			});
 
 			this.notes = mergedNotes;
 			this.labels = mergedLabels;
 			this.mirrorToLS();
-			await Promise.all([bulkPutNotes(mergedNotes), bulkPutLabels(mergedLabels)]);
+			await Promise.all([
+				...notesToPersist.map((note) => putNote(note)),
+				...(labelsChanged ? [bulkPutLabels(mergedLabels)] : [])
+			]);
 			this.lastPersistError = null;
 			return true;
 		} catch (err) {
