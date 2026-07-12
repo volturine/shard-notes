@@ -28,7 +28,8 @@
 		loading = false;
 		if (result.success) {
 			mode = 'linked';
-			await notesStore.syncWithCloudManual();
+			const synced = await notesStore.syncWithCloudManual();
+			if (!synced) error = syncStore.lastError || 'Account created, but the first sync failed';
 		} else {
 			error = result.error || 'Registration failed';
 			if (result.accountExists) {
@@ -47,8 +48,9 @@
 		const result = await syncStore.linkDevice(syncCodeInput.trim());
 		loading = false;
 		if (result.success) {
-			await notesStore.syncWithCloudManual();
+			const synced = await notesStore.syncWithCloudManual();
 			mode = 'linked';
+			if (!synced) error = syncStore.lastError || 'Device linked, but the first sync failed';
 		} else {
 			error = result.error || 'Invalid sync code';
 		}
@@ -65,7 +67,7 @@
 		} else if (!syncStore.isLoggedIn) {
 			error = 'Not logged in';
 		} else {
-			error = 'Sync failed — check your connection';
+			error = syncStore.lastError || 'Sync failed — check your connection';
 		}
 	}
 

@@ -475,7 +475,10 @@ export class NotesStore {
 		const localLabels = this.labels.map(normalizeLabel);
 		try {
 			const result = await syncStore.sync(localNotes, localLabels, indicate);
-			if (!result.success || !result.notes) return false;
+			if (!result.success || !result.notes) {
+				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
+				return false;
+			}
 
 			const mergedNotes = mergeNoteLists(this.notes, result.notes as Note[])
 				.sort((a, b) => b.updatedAt - a.updatedAt);
