@@ -26,7 +26,7 @@
 
 	function openUnlessAction(e: MouseEvent) {
 		const t = e.target as HTMLElement;
-		if (t.closest('[data-checklist-toggle]')) return;
+		if (t.closest('[data-checklist-toggle], [data-photo]')) return;
 		onOpen(note.id);
 	}
 

@@ -33,6 +33,7 @@
 			<button
 				type="button"
 				class="block max-w-full touch-manipulation rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+				data-photo
 				onclick={(event) => focusImage(index, event)}
 				aria-label={`Open ${img.name ?? 'photo'}`}
 			>

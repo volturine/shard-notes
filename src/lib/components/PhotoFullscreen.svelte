@@ -49,5 +49,6 @@
 			class="pointer-events-auto max-h-[100dvh] max-w-full select-none object-contain"
 			draggable="false"
 		/>
+		<button type="button" class="pointer-events-auto absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-[82] h-11 w-11 rounded-full bg-black/65 text-2xl leading-none text-white touch-manipulation" onclick={close} aria-label="Close photo">×</button>
 	</div>
 {/if}
