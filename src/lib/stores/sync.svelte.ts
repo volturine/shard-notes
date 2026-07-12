@@ -1,6 +1,7 @@
 // Client-side account, sync status, and real transfer progress for full-size photo backups.
 
 import type { Label, Note } from '$lib/types';
+import { sha256 } from '$lib/syncHash';
 
 const LS_SYNC_KEY = 'gkc-sync-account';
 const LS_SYNC_STATUS_KEY = 'gkc-sync-status';
@@ -146,11 +147,13 @@ class SyncStore {
 		if (!this.account) return { success: false, error: 'Not logged in' };
 		if (indicate) this.onSyncStart?.();
 		try {
+			const noteHashes = Object.fromEntries(await Promise.all(notes.map(async (note) => [note.id, await sha256(note)])));
+			const labelHashes = Object.fromEntries(await Promise.all(labels.map(async (label) => [label.id, await sha256(label)])));
 			const manifestPayload = JSON.stringify({
 				syncCode: this.account.syncCode,
 				manifest: {
-					notes: notes.map(({ id, updatedAt }) => ({ id, updatedAt })),
-					labels: labels.map(({ id, updatedAt }) => ({ id, updatedAt })),
+					notes: notes.map(({ id, updatedAt }) => ({ id, updatedAt, hash: noteHashes[id] })),
+					labels: labels.map(({ id, updatedAt }) => ({ id, updatedAt, hash: labelHashes[id] })),
 					tombstones
 				}
 			});
@@ -164,9 +167,12 @@ class SyncStore {
 			const uploadLabels = labels.filter((label) => uploadLabelIds.has(label.id));
 			let canonical: SyncResult = { success: true, notes: [], labels: [], tombstones: {} };
 			if (uploadNotes.length || uploadLabels.length || Object.keys(uploadTombstones).length) {
-				const uploadPayload = JSON.stringify({ syncCode: this.account.syncCode, notes: uploadNotes, labels: uploadLabels, tombstones: uploadTombstones });
+				const uploadPayload = JSON.stringify({ syncCode: this.account.syncCode, notes: uploadNotes, labels: uploadLabels, tombstones: uploadTombstones, hashes: { notes: Object.fromEntries(uploadNotes.map((note) => [note.id, noteHashes[note.id]])), labels: Object.fromEntries(uploadLabels.map((label) => [label.id, labelHashes[label.id]])) } });
 				canonical = await this.sendSyncRequest('/api/sync/delta', uploadPayload, new Blob([uploadPayload]).size, indicate);
 				if (!canonical.success) return this.fail(canonical);
+				const ack = canonical.data?.ack as { notes?: Record<string, string>; labels?: Record<string, string> } | undefined;
+				for (const note of uploadNotes) if (ack?.notes?.[note.id] !== noteHashes[note.id]) return this.fail({ success: false, error: `Server hash acknowledgement failed for note ${note.id}` });
+				for (const label of uploadLabels) if (ack?.labels?.[label.id] !== labelHashes[label.id]) return this.fail({ success: false, error: `Server hash acknowledgement failed for label ${label.id}` });
 			}
 
 			this.lastSync = Date.now();

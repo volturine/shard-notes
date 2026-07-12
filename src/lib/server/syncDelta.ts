@@ -1,6 +1,6 @@
 // Delta-sync planning: manifests are tiny; full note blobs move only when their version differs.
 
-export type ManifestRecord = { id: string; updatedAt: number };
+export type ManifestRecord = { id: string; updatedAt: number; hash?: string };
 export type TombstoneMap = Record<string, number>;
 
 type Versioned = ManifestRecord & Record<string, unknown>;
@@ -15,7 +15,7 @@ export function planDelta<T extends Versioned>(
 	localTombstones: TombstoneMap = {},
 	storedTombstones: TombstoneMap = {}
 ): { download: T[]; uploadIds: string[]; downloadTombstones: TombstoneMap; uploadTombstones: TombstoneMap } {
-	const local = times(localManifest);
+	const local = new Map(localManifest.map((record) => [record.id, record]));
 	const server = new Map(stored.map((record) => [record.id, record]));
 	const download: T[] = [];
 	const uploadIds: string[] = [];
@@ -24,7 +24,8 @@ export function planDelta<T extends Versioned>(
 
 	const ids = new Set([...local.keys(), ...server.keys(), ...Object.keys(localTombstones), ...Object.keys(storedTombstones)]);
 	for (const id of ids) {
-		const localTime = local.get(id) ?? 0;
+		const localRecord = local.get(id);
+		const localTime = Number(localRecord?.updatedAt) || 0;
 		const serverRecord = server.get(id);
 		const serverTime = Number(serverRecord?.updatedAt) || 0;
 		const localDeleted = Number(localTombstones[id]) || 0;
@@ -38,6 +39,7 @@ export function planDelta<T extends Versioned>(
 		}
 		if (serverTime > localTime && serverRecord) download.push(serverRecord);
 		else if (localTime > serverTime) uploadIds.push(id);
+		else if (serverRecord && localRecord?.hash && typeof serverRecord.hash === 'string' && localRecord.hash !== serverRecord.hash) download.push(serverRecord);
 	}
 	return { download, uploadIds, downloadTombstones, uploadTombstones };
 }
