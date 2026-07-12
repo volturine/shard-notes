@@ -24,14 +24,6 @@
 		activeIndex = (activeIndex + offset + images.length) % images.length;
 	}
 
-	function previous() {
-		move(-1);
-	}
-
-	function next() {
-		move(1);
-	}
-
 	function onTouchStart(event: TouchEvent) {
 		touchStartX = event.touches[0]?.clientX ?? 0;
 	}
@@ -65,10 +57,6 @@
 			class="pointer-events-auto max-h-[100dvh] max-w-full select-none object-contain"
 			draggable="false"
 		/>
-		{#if images.length > 1}
-			<button type="button" class="pointer-events-auto absolute left-3 top-1/2 z-[82] -translate-y-1/2 rounded-full bg-black/55 px-3 py-2 text-3xl leading-none text-white touch-manipulation" onclick={previous} aria-label="Previous photo">‹</button>
-			<button type="button" class="pointer-events-auto absolute right-3 top-1/2 z-[82] -translate-y-1/2 rounded-full bg-black/55 px-3 py-2 text-3xl leading-none text-white touch-manipulation" onclick={next} aria-label="Next photo">›</button>
-		{/if}
 		<button type="button" class="pointer-events-auto absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-[82] h-11 w-11 rounded-full bg-black/65 text-2xl leading-none text-white touch-manipulation" onclick={close} aria-label="Close photo">×</button>
 	</div>
 	</div>
