@@ -24,6 +24,20 @@
 		activeIndex = (activeIndex + offset + images.length) % images.length;
 	}
 
+	function previous() {
+		move(-1);
+	}
+
+	function next() {
+		move(1);
+	}
+
+	function handleKey(event: KeyboardEvent) {
+		if (event.key === 'Escape') close();
+		if (event.key === 'ArrowLeft') previous();
+		if (event.key === 'ArrowRight') next();
+	}
+
 	function onTouchStart(event: TouchEvent) {
 		touchStartX = event.touches[0]?.clientX ?? 0;
 	}
@@ -36,7 +50,7 @@
 	}
 </script>
 
-<svelte:window onkeydown={(event) => event.key === 'Escape' && close()} />
+<svelte:window onkeydown={handleKey} />
 
 {#if activeIndex !== null && images[activeIndex]}
 	<div use:portal>
@@ -57,7 +71,13 @@
 			class="pointer-events-auto max-h-[100dvh] max-w-full select-none object-contain"
 			draggable="false"
 		/>
-		<button type="button" class="pointer-events-auto absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-[82] h-11 w-11 rounded-full bg-black/65 text-2xl leading-none text-white touch-manipulation" onclick={close} aria-label="Close photo">×</button>
 	</div>
+	<button type="button" class="fixed right-4 top-[max(1rem,env(safe-area-inset-top))] z-[90] h-11 w-11 rounded-full bg-black/65 text-2xl leading-none text-white touch-manipulation" onclick={close} aria-label="Close photo">×</button>
+	{#if images.length > 1}
+		<div class="fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[90] flex justify-center gap-2">
+			<button type="button" class="rounded-full bg-black/65 px-4 py-2 text-sm font-medium text-white touch-manipulation" onclick={previous}>Previous</button>
+			<button type="button" class="rounded-full bg-black/65 px-4 py-2 text-sm font-medium text-white touch-manipulation" onclick={next}>Next</button>
+		</div>
+	{/if}
 	</div>
 {/if}
