@@ -149,10 +149,14 @@ class SyncStore {
 		try {
 			const noteHashes = Object.fromEntries(await Promise.all(notes.map(async (note) => [note.id, await sha256(note)])));
 			const labelHashes = Object.fromEntries(await Promise.all(labels.map(async (label) => [label.id, await sha256(label)])));
+			const imageManifests = Object.fromEntries(await Promise.all(notes.map(async (note) => [
+				note.id,
+				await Promise.all((note.images ?? []).map(async (image) => ({ id: image.id, hash: await sha256(image.dataUrl) })))
+			])));
 			const manifestPayload = JSON.stringify({
 				syncCode: this.account.syncCode,
 				manifest: {
-					notes: notes.map(({ id, updatedAt, images }) => ({ id, updatedAt, hash: noteHashes[id], imageIds: (images ?? []).map((image) => image.id) })),
+					notes: notes.map(({ id, updatedAt }) => ({ id, updatedAt, hash: noteHashes[id], images: imageManifests[id] })),
 					labels: labels.map(({ id, updatedAt }) => ({ id, updatedAt, hash: labelHashes[id] })),
 					tombstones
 				}

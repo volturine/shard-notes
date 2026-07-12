@@ -6,7 +6,8 @@ import { sha256 } from '$lib/syncHash';
 import { readSyncData, writeSyncData } from '$lib/server/syncStore';
 
 type DeltaUser = { notes: SyncNote[]; labels: SyncLabel[]; tombstones?: TombstoneMap; updatedAt: number };
-type Manifest = { notes: ManifestRecord[]; labels: ManifestRecord[]; tombstones?: TombstoneMap };
+type ImageManifest = { id: string; hash: string };
+type Manifest = { notes: (ManifestRecord & { images?: ImageManifest[] })[]; labels: ManifestRecord[]; tombstones?: TombstoneMap };
 
 function validManifest(value: unknown): value is Manifest {
 	return !!value && typeof value === 'object'
@@ -43,11 +44,16 @@ export const POST: RequestHandler = async ({ request }) => {
 				const { hash: _hash, ...plain } = record;
 				return plain;
 			};
-			const knownImageIds = Object.fromEntries(notePlan.uploadIds.map((noteId) => {
+			const manifestByNoteId = new Map(body.manifest.notes.map((note) => [note.id, note]));
+			const knownImageIds = Object.fromEntries(await Promise.all(notePlan.uploadIds.map(async (noteId) => {
 				const stored = user.notes.find((note) => note.id === noteId);
+				const offered = new Map((manifestByNoteId.get(noteId)?.images ?? []).map((image) => [image.id, image.hash]));
 				const storedImages = ((stored?.images as Array<{ id: string; dataUrl?: string }> | undefined) ?? []);
-				return [noteId, storedImages.filter((image) => (image.dataUrl?.length ?? 0) > 20).map((image) => image.id)];
-			}));
+				const known = await Promise.all(storedImages.filter((image) => !!image.dataUrl && offered.has(image.id)).map(async (image) =>
+					(await sha256(image.dataUrl)) === offered.get(image.id) ? image.id : null
+				));
+				return [noteId, known.filter((id): id is string => id !== null)];
+			})));
 			return response({
 				notes: notePlan.download.map(stripHash),
 				labels: labelPlan.download.map(stripHash),
