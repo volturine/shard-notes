@@ -11,6 +11,10 @@
 
 	let touchStartX = 0;
 
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+	}
+
 	function close() {
 		activeIndex = null;
 	}
@@ -32,6 +36,7 @@
 <svelte:window onkeydown={(event) => event.key === 'Escape' && close()} />
 
 {#if activeIndex !== null && images[activeIndex]}
+	<div use:portal>
 	<button
 		type="button"
 		class="fixed inset-0 z-[80] cursor-zoom-out bg-black"
@@ -50,5 +55,6 @@
 			draggable="false"
 		/>
 		<button type="button" class="pointer-events-auto absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-[82] h-11 w-11 rounded-full bg-black/65 text-2xl leading-none text-white touch-manipulation" onclick={close} aria-label="Close photo">×</button>
+	</div>
 	</div>
 {/if}
