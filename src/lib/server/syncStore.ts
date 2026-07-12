@@ -8,6 +8,7 @@ export interface SyncUser {
 	syncCode: string;
 	notes: unknown[];
 	labels: unknown[];
+	tombstones?: Record<string, number>;
 	updatedAt: number;
 }
 

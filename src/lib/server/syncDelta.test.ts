@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeTombstones, planDelta } from './syncDelta';
+import { mergeTombstones, planDelta, withoutTombstoned } from './syncDelta';
 
 describe('delta sync planning', () => {
 	it('moves no full records when manifests match', () => {
@@ -20,5 +20,9 @@ describe('delta sync planning', () => {
 		const plan = planDelta([{ id: 'gone', updatedAt: 10 }], [{ id: 'gone', updatedAt: 10 }], { gone: 30 });
 		expect(plan.uploadTombstones).toEqual({ gone: 30 });
 		expect(mergeTombstones({ gone: 10 }, { gone: 30 })).toEqual({ gone: 30 });
+	});
+
+	it('does not let a legacy full snapshot revive a tombstoned note', () => {
+		expect(withoutTombstoned([{ id: 'gone', updatedAt: 10 }], { gone: 30 })).toEqual([]);
 	});
 });

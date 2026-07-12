@@ -2,6 +2,7 @@ import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { mergeLabels, mergeNotes, type SyncLabel, type SyncNote } from '$lib/server/syncMerge';
 import { readSyncData, writeSyncData } from '$lib/server/syncStore';
+import { withoutTombstoned } from '$lib/server/syncDelta';
 
 function isArray(value: unknown): value is unknown[] {
 	return Array.isArray(value);
@@ -28,7 +29,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		const user = Object.values(data).find((entry) => entry.syncCode === body.syncCode);
 		if (!user) return json({ error: 'Invalid sync code' }, { status: 404 });
 
-		const notes = mergeNotes(body.notes as SyncNote[], user.notes as SyncNote[]);
+		const notes = withoutTombstoned(
+			mergeNotes(body.notes as SyncNote[], user.notes as SyncNote[]),
+			user.tombstones ?? {}
+		);
 		const labels = mergeLabels(body.labels as SyncLabel[], user.labels as SyncLabel[]);
 		user.notes = notes;
 		user.labels = labels;

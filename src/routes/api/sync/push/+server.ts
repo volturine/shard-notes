@@ -2,6 +2,7 @@ import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { mergeLabels, mergeNotes, type SyncLabel, type SyncNote } from '$lib/server/syncMerge';
 import { readSyncData, writeSyncData } from '$lib/server/syncStore';
+import { withoutTombstoned } from '$lib/server/syncDelta';
 
 // Legacy endpoint retained as a safe merge alias; it never blindly overwrites account data.
 export const POST: RequestHandler = async ({ request }) => {
@@ -17,7 +18,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		const data = readSyncData();
 		const user = Object.values(data).find((entry) => entry.syncCode === body.syncCode);
 		if (!user) return json({ error: 'Invalid sync code' }, { status: 404 });
-		user.notes = mergeNotes(body.notes as SyncNote[], user.notes as SyncNote[]);
+		user.notes = withoutTombstoned(
+			mergeNotes(body.notes as SyncNote[], user.notes as SyncNote[]),
+			user.tombstones ?? {}
+		);
 		user.labels = mergeLabels(body.labels as SyncLabel[], user.labels as SyncLabel[]);
 		user.updatedAt = Date.now();
 		writeSyncData(data);

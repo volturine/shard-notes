@@ -50,3 +50,8 @@ export function mergeTombstones(current: TombstoneMap, incoming: TombstoneMap): 
 	}
 	return merged;
 }
+
+/** Legacy full-snapshot clients must never revive a newer permanent delete. */
+export function withoutTombstoned<T extends Versioned>(records: T[], tombstones: TombstoneMap = {}): T[] {
+	return records.filter((record) => (Number(tombstones[record.id]) || 0) < Number(record.updatedAt));
+}
