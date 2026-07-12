@@ -28,30 +28,6 @@
 	}
 </script>
 
-{#if images.length > 0}
-	<div class="mb-2 flex flex-wrap gap-1.5">
-		{#each shownImages as img, index (img.id)}
-			<button
-				type="button"
-				class="block touch-manipulation overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 {clamp ? 'h-10 w-10' : 'max-w-full'}"
-				data-photo
-				onclick={(event) => focusImage(index, event)}
-				aria-label={`Open ${img.name ?? 'photo'}`}
-			>
-				<img
-					src={img.dataUrl}
-					alt={img.name ?? 'Photo'}
-					class={clamp ? 'h-full w-full object-cover' : 'max-h-32 max-w-full rounded-lg object-cover'}
-					loading="lazy"
-				/>
-			</button>
-		{/each}
-		{#if clamp && images.length > shownImages.length}
-			<button type="button" class="h-10 min-w-10 rounded-md bg-black/10 px-2 text-xs font-medium text-[var(--gkc-text)] dark:bg-white/10" data-photo onclick={(event) => focusImage(shownImages.length, event)} aria-label={`Open ${images.length - shownImages.length} more photos`}>+{images.length - shownImages.length}</button>
-		{/if}
-	</div>
-{/if}
-
 <div
 	class="text-sm text-[var(--gkc-text)] {clamp ? 'max-h-[200px] overflow-hidden' : ''}"
 	style={clamp ? 'display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical;' : ''}
@@ -87,5 +63,18 @@
 		{/if}
 	{/each}
 </div>
+
+{#if images.length > 0}
+	<div class="mt-2 flex flex-wrap gap-1.5">
+		{#each shownImages as img, index (img.id)}
+			<button type="button" class="block touch-manipulation overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 {clamp ? 'h-10 w-10' : 'max-w-full'}" data-photo onclick={(event) => focusImage(index, event)} aria-label={`Open ${img.name ?? 'photo'}`}>
+				<img src={img.dataUrl} alt={img.name ?? 'Photo'} class={clamp ? 'h-full w-full object-cover' : 'max-h-32 max-w-full rounded-lg object-cover'} loading="lazy" />
+			</button>
+		{/each}
+		{#if clamp && images.length > shownImages.length}
+			<button type="button" class="h-10 min-w-10 rounded-md bg-black/10 px-2 text-xs font-medium text-[var(--gkc-text)] dark:bg-white/10" data-photo onclick={(event) => focusImage(shownImages.length, event)} aria-label={`Open ${images.length - shownImages.length} more photos`}>+{images.length - shownImages.length}</button>
+		{/if}
+	</div>
+{/if}
 
 <PhotoFullscreen {images} bind:activeIndex={focusedImageIndex} />
