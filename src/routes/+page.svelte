@@ -1,5 +1,4 @@
 <script lang="ts">
-	import NoteComposer from '$lib/components/NoteComposer.svelte';
 	import NoteCard from '$lib/components/NoteCard.svelte';
 	import MasonryGrid from '$lib/components/MasonryGrid.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
@@ -18,10 +17,6 @@
 </script>
 
 <div class="pt-4 pb-8">
-	<div class="notes-content mb-6">
-		<NoteComposer />
-	</div>
-
 	{#if filteredPinned.length > 0}
 		<div class="notes-content">
 			<h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
