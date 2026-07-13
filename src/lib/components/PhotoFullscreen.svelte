@@ -10,6 +10,28 @@
 	} = $props();
 
 	let touchStartX = 0;
+	let controlsVisible = $state(false);
+	let controlsTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function revealControls() {
+		controlsVisible = true;
+		if (controlsTimer) clearTimeout(controlsTimer);
+		controlsTimer = setTimeout(() => {
+			controlsVisible = false;
+			controlsTimer = null;
+		}, 2500);
+	}
+
+	$effect(() => {
+		if (activeIndex === null) {
+			controlsVisible = false;
+			return;
+		}
+		revealControls();
+		return () => {
+			if (controlsTimer) clearTimeout(controlsTimer);
+		};
+	});
 
 	function portal(node: HTMLElement) {
 		document.body.appendChild(node);
@@ -26,10 +48,12 @@
 
 	function previous() {
 		move(-1);
+		revealControls();
 	}
 
 	function next() {
 		move(1);
+		revealControls();
 	}
 
 	function handleKey(event: KeyboardEvent) {
@@ -39,6 +63,7 @@
 	}
 
 	function onTouchStart(event: TouchEvent) {
+		revealControls();
 		touchStartX = event.touches[0]?.clientX ?? 0;
 	}
 
@@ -70,14 +95,15 @@
 			alt={images[activeIndex].name ?? 'Photo'}
 			class="pointer-events-auto max-h-[100dvh] max-w-full select-none object-contain"
 			draggable="false"
+			onclick={revealControls}
 		/>
 	</div>
-	<button type="button" class="fixed right-4 top-[max(1rem,env(safe-area-inset-top))] z-[90] h-11 w-11 rounded-full bg-black/65 text-2xl leading-none text-white touch-manipulation" onclick={close} aria-label="Close photo">×</button>
-	{#if images.length > 1}
-		<div class="fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[90] flex justify-center gap-2">
-			<button type="button" class="rounded-full bg-black/65 px-4 py-2 text-sm font-medium text-white touch-manipulation" onclick={previous}>Previous</button>
-			<button type="button" class="rounded-full bg-black/65 px-4 py-2 text-sm font-medium text-white touch-manipulation" onclick={next}>Next</button>
-		</div>
+	{#if controlsVisible}
+		<button type="button" class="fixed right-4 top-[max(1rem,env(safe-area-inset-top))] z-[90] h-11 w-11 rounded-full bg-black/65 text-2xl leading-none text-white touch-manipulation" onclick={close} aria-label="Close photo">×</button>
+		{#if images.length > 1}
+			<button type="button" class="fixed left-3 top-1/2 z-[90] -translate-y-1/2 rounded-full bg-black/65 px-3 py-2 text-3xl leading-none text-white touch-manipulation" onclick={previous} aria-label="Previous photo">‹</button>
+			<button type="button" class="fixed right-3 top-1/2 z-[90] -translate-y-1/2 rounded-full bg-black/65 px-3 py-2 text-3xl leading-none text-white touch-manipulation" onclick={next} aria-label="Next photo">›</button>
+		{/if}
 	{/if}
 	</div>
 {/if}
