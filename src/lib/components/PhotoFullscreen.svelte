@@ -19,25 +19,17 @@
 		controlsTimer = setTimeout(() => {
 			controlsVisible = false;
 			controlsTimer = null;
-		}, 2500);
+		}, 1800);
 	}
-
-	$effect(() => {
-		if (activeIndex === null) {
-			controlsVisible = false;
-			return;
-		}
-		revealControls();
-		return () => {
-			if (controlsTimer) clearTimeout(controlsTimer);
-		};
-	});
 
 	function portal(node: HTMLElement) {
 		document.body.appendChild(node);
 	}
 
 	function close() {
+		if (controlsTimer) clearTimeout(controlsTimer);
+		controlsTimer = null;
+		controlsVisible = false;
 		activeIndex = null;
 	}
 
@@ -99,10 +91,14 @@
 		/>
 	</div>
 	{#if controlsVisible}
-		<button type="button" class="fixed right-4 top-[max(1rem,env(safe-area-inset-top))] z-[90] h-11 w-11 rounded-full bg-black/65 text-2xl leading-none text-white touch-manipulation" onclick={close} aria-label="Close photo">×</button>
+		<button type="button" class="fixed right-4 top-[max(1rem,env(safe-area-inset-top))] z-[90] grid h-9 w-9 place-items-center rounded-full bg-black/40 text-xl text-white backdrop-blur-sm touch-manipulation" onclick={close} aria-label="Close photo">×</button>
 		{#if images.length > 1}
-			<button type="button" class="fixed left-3 top-1/2 z-[90] -translate-y-1/2 rounded-full bg-black/65 px-3 py-2 text-3xl leading-none text-white touch-manipulation" onclick={previous} aria-label="Previous photo">‹</button>
-			<button type="button" class="fixed right-3 top-1/2 z-[90] -translate-y-1/2 rounded-full bg-black/65 px-3 py-2 text-3xl leading-none text-white touch-manipulation" onclick={next} aria-label="Next photo">›</button>
+			<button type="button" class="fixed left-3 top-1/2 z-[90] grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm touch-manipulation" onclick={previous} aria-label="Previous photo">
+				<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+			</button>
+			<button type="button" class="fixed right-3 top-1/2 z-[90] grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm touch-manipulation" onclick={next} aria-label="Next photo">
+				<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+			</button>
 		{/if}
 	{/if}
 	</div>
