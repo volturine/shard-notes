@@ -30,21 +30,6 @@ export function daysSinceTrashed(trashedAt: number | null): number {
 
 export const TRASH_PURGE_DAYS = 7;
 
-/** Convert epoch ms to a datetime-local input value (local time, YYYY-MM-DDTHH:mm). */
-export function toDatetimeLocal(ts: number | null): string {
-	if (ts == null) return '';
-	const d = new Date(ts);
-	const pad = (n: number) => String(n).padStart(2, '0');
-	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-/** Convert a datetime-local input value to epoch ms. */
-export function fromDatetimeLocal(value: string): number | null {
-	if (!value) return null;
-	const t = new Date(value).getTime();
-	return Number.isNaN(t) ? null : t;
-}
-
 /** Deep-clone a note for editing without mutating the stored one. */
 export function cloneNote(note: import('$lib/types').Note): import('$lib/types').Note {
 	return {
