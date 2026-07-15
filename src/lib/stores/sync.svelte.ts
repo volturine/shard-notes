@@ -86,11 +86,13 @@ class SyncStore {
 
 	async linkDevice(syncCode: string): Promise<{ success: boolean; error?: string }> {
 		try {
-			const res = await fetch('/api/sync/sync', {
-				method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ syncCode, notes: [], labels: [] })
+			const res = await fetch('/api/sync/delta', {
+				method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ syncCode, manifest: { notes: [], labels: [] } })
 			});
-			const data = await res.json();
-			if (!res.ok) return { success: false, error: data.error || 'Invalid sync code' };
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({}));
+				return { success: false, error: data.error || 'Invalid sync code' };
+			}
 			this.account = { username: '', syncCode };
 			this.lastError = null;
 			this.saveAccount();
