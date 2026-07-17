@@ -55,9 +55,8 @@
 	}
 
 	/**
-	 * Attach is a normal button. Each press creates a fresh <input type=file>
-	 * inside the same user gesture, opens it, then throws it away.
-	 * Nothing sticky lives in the footer — cancel cannot leave a half-dead control.
+	 * Normal button: each press creates a one-shot file input in this gesture,
+	 * opens the system picker, then discards the input so cancel cannot stick.
 	 */
 	function openAttach() {
 		attachError = '';

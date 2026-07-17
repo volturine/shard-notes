@@ -31,12 +31,15 @@ export function toggleLineAt(body: string, lineIndex: number): string {
 	return lines.join('\n');
 }
 
-export function noteImages(note: Note) {
+export function noteAttachments(note: Note) {
 	return note.images ?? [];
 }
 
+/** @deprecated use noteAttachments */
+export const noteImages = noteAttachments;
+
 export function noteToPlainText(note: Note): string {
-	const atts = noteImages(note);
+	const atts = noteAttachments(note);
 	const imgs = atts.filter((a) => a.mime.startsWith('image/')).length;
 	const files = atts.length - imgs;
 	const parts: string[] = [];
@@ -47,8 +50,8 @@ export function noteToPlainText(note: Note): string {
 }
 
 /**
- * Strip legacy fields (`items`, `kind`) from stored notes.
- * One-shot: if a list note still has items, fold them into body checklist lines.
+ * Sanitize notes from storage/sync into the current model.
+ * Still folds pre-checklist `kind: 'list'` + `items` into body lines once.
  */
 export function normalizeNote(raw: Record<string, unknown> | Note): Note {
 	const n = raw as Note & {

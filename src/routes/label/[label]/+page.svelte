@@ -1,8 +1,7 @@
 <script lang="ts">
-	import NoteCard from '$lib/components/NoteCard.svelte';
-	import MasonryGrid from '$lib/components/MasonryGrid.svelte';
+	import NotesFeed from '$lib/components/NotesFeed.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
+	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
 	import { page } from '$app/state';
 
@@ -13,11 +12,9 @@
 	const notes = $derived(
 		label ? notesStore.activeNotes.filter((n) => n.labels.includes(label.id)) : []
 	);
-
 	const pinned = $derived(notes.filter((n) => n.pinned));
 	const others = $derived(notes.filter((n) => !n.pinned));
-
-	const headingClass = $derived('notes-content ' + (uiStore.layout === 'list' ? 'max-w-[720px] mx-auto' : ''));
+	const shell = $derived(notesShellClass());
 </script>
 
 <div class="pt-4 pb-8">
@@ -32,33 +29,21 @@
 			<div class="text-sm">No notes with this label yet.</div>
 		</div>
 	{:else}
-		<div class={headingClass}>
+		<div class={shell}>
 			<h1 class="mb-4 px-2 text-xl font-medium text-[var(--gkc-text)]">{label.name}</h1>
 		</div>
 
 		{#if pinned.length > 0}
-			<div class={headingClass}>
+			<div class={shell}>
 				<h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
 					Pinned
 				</h2>
 			</div>
-			<div class="notes-content mb-6">
-				{#if uiStore.layout === 'grid'}
-					<MasonryGrid notes={pinned} onOpen={openEditor} />
-				{:else}
-					<div class="masonry masonry-list">
-						{#each pinned as note (note.id)}
-							<div>
-								<NoteCard {note} onOpen={openEditor} />
-							</div>
-						{/each}
-					</div>
-				{/if}
-			</div>
+			<NotesFeed notes={pinned} onOpen={openEditor} class="mb-6" />
 		{/if}
 
 		{#if pinned.length > 0 && others.length > 0}
-			<div class={headingClass}>
+			<div class={shell}>
 				<h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
 					Others
 				</h2>
@@ -66,19 +51,7 @@
 		{/if}
 
 		{#if others.length > 0}
-			<div class="notes-content">
-				{#if uiStore.layout === 'grid'}
-					<MasonryGrid notes={others} onOpen={openEditor} />
-				{:else}
-					<div class="masonry masonry-list">
-						{#each others as note (note.id)}
-							<div>
-								<NoteCard {note} onOpen={openEditor} />
-							</div>
-						{/each}
-					</div>
-				{/if}
-			</div>
+			<NotesFeed notes={others} onOpen={openEditor} />
 		{/if}
 	{/if}
 </div>

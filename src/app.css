@@ -49,13 +49,10 @@ html {
 	background-color: var(--gkc-bg);
 }
 
-/* NoteEditor overlay: isolate the app shell only while the editor is open
-   to avoid full-page repaint on iOS Safari. Applied via .editor-open class
-   on <html> so it doesn't interfere with normal touch scrolling. */
+/* Note editor open: promote app shell to its own layer so iOS does not repaint the whole page under the modal. */
 html.editor-open .app-shell {
 	transform: translateZ(0);
 	-webkit-transform: translateZ(0);
-	will-change: transform;
 }
 
 html,
@@ -107,6 +104,11 @@ body {
 	margin-inline: auto;
 	padding-inline: 0;
 	box-sizing: border-box;
+}
+
+/* Headings / toolbars that should match the list column width. */
+.notes-content--list {
+	max-width: 720px;
 }
 
 .masonry-balanced {
@@ -195,7 +197,7 @@ body {
 	scrollbar-width: thin;
 }
 
-/* Subtle focus ring used by icon buttons. */
+/* Icon buttons — hover only on fine pointers (touch never gets sticky :hover). */
 .icon-btn {
 	display: inline-flex;
 	align-items: center;
@@ -204,11 +206,9 @@ body {
 	transition: background-color 120ms ease, color 120ms ease;
 	touch-action: manipulation;
 	-webkit-tap-highlight-color: transparent;
-	/* Avoid sticky :focus ring/highlight after system sheets (iOS file picker). */
 	outline: none;
 }
 
-/* Hover only on real pointer devices — iOS sticks :hover after tap. */
 @media (hover: hover) and (pointer: fine) {
 	.icon-btn:hover {
 		background-color: rgba(0, 0, 0, 0.07);
@@ -218,21 +218,15 @@ body {
 	}
 }
 
-.icon-btn:active {
-	background-color: rgba(0, 0, 0, 0.1);
-}
-.dark .icon-btn:active {
-	background-color: rgba(255, 255, 255, 0.12);
-}
-/* Touch devices: don't keep a pressed look after finger up / system sheets. */
-@media (hover: none) {
+@media (hover: hover) and (pointer: fine) {
 	.icon-btn:active {
-		background-color: transparent;
+		background-color: rgba(0, 0, 0, 0.1);
 	}
 	.dark .icon-btn:active {
-		background-color: transparent;
+		background-color: rgba(255, 255, 255, 0.12);
 	}
 }
+
 .icon-btn:focus-visible {
 	outline: 2px solid var(--gkc-accent, #3b82f6);
 	outline-offset: 2px;

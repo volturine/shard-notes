@@ -10,25 +10,14 @@
 	let syncOpen = $state(false);
 	let quickSyncBusy = $state(false);
 
-	function releaseCloudBtn(el: HTMLButtonElement) {
-		el.blur();
-		requestAnimationFrame(() => el.blur());
-	}
-
-	async function doQuickSync(e: MouseEvent) {
+	async function doQuickSync() {
 		if (quickSyncBusy) return;
 		quickSyncBusy = true;
-		const btn = e.currentTarget as HTMLButtonElement;
 		try {
 			await notesStore.syncWithCloudManual();
 		} finally {
 			quickSyncBusy = false;
-			releaseCloudBtn(btn);
 		}
-	}
-
-	function onCloudPointerUp(e: PointerEvent) {
-		releaseCloudBtn(e.currentTarget as HTMLButtonElement);
 	}
 
 	async function exportBackup() {
@@ -119,8 +108,6 @@
 		type="button"
 		class="icon-btn icon-btn-plain h-10 w-10 p-2"
 		title={syncStore.isLoggedIn ? 'Sync' : 'Set up sync'}
-		onmousedown={(e) => e.preventDefault()}
-		onpointerup={onCloudPointerUp}
 		onclick={syncStore.isLoggedIn ? doQuickSync : () => { syncOpen = true; }}
 		aria-label="Sync"
 		aria-busy={quickSyncBusy}

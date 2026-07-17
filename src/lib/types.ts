@@ -17,18 +17,21 @@ export type NoteColor =
 export interface NoteImage {
 	id: string;
 	mime: string;
-	/** data: URL — photos, or any attached file */
+	/** data: URL — photos or any attached file */
 	dataUrl: string;
 	name?: string;
 	createdAt: number;
 }
+
+/** Alias for clarity; same shape as NoteImage (wire field remains `images`). */
+export type NoteAttachment = NoteImage;
 
 export interface Note {
 	id: string;
 	title: string;
 	/** Plain text body. Supports `[ ]` / `[x]` checklist lines. */
 	body: string;
-	/** Attachments (photos + any files). Stored as data URLs / IDB blobs. */
+	/** Attachments (photos + files). Wire name stays `images` for sync compat. */
 	images?: NoteImage[];
 	color: NoteColor;
 	pinned: boolean;

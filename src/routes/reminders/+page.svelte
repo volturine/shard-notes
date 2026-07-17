@@ -1,14 +1,12 @@
 <script lang="ts">
-	import NoteCard from '$lib/components/NoteCard.svelte';
-	import MasonryGrid from '$lib/components/MasonryGrid.svelte';
+	import NotesFeed from '$lib/components/NotesFeed.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
+	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
 
 	const { openNote: openEditor } = useEditorActions();
 	const reminders = $derived(notesStore.notesWithReminders);
-
-	const headingClass = $derived('notes-content ' + (uiStore.layout === 'list' ? 'max-w-[720px] mx-auto' : ''));
+	const shell = $derived(notesShellClass());
 </script>
 
 <div class="pt-4 pb-8">
@@ -18,23 +16,11 @@
 			<div class="text-sm">No reminders yet. Add one from a note (⏰).</div>
 		</div>
 	{:else}
-		<div class={headingClass}>
+		<div class={shell}>
 			<h2 class="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
 				Reminders
 			</h2>
 		</div>
-		<div class="notes-content">
-			{#if uiStore.layout === 'grid'}
-				<MasonryGrid notes={reminders} onOpen={openEditor} />
-			{:else}
-				<div class="masonry masonry-list">
-					{#each reminders as note (note.id)}
-						<div>
-							<NoteCard {note} onOpen={openEditor} />
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</div>
+		<NotesFeed notes={reminders} onOpen={openEditor} />
 	{/if}
 </div>

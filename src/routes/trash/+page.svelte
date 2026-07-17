@@ -1,12 +1,13 @@
 <script lang="ts">
 	import TrashCard from '$lib/components/TrashCard.svelte';
-	import MasonryGrid from '$lib/components/MasonryGrid.svelte';
+	import NotesFeed from '$lib/components/NotesFeed.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
+	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
 
 	const { openNote: openEditor } = useEditorActions();
 	const trashed = $derived(notesStore.trashedNotes);
+	const shell = $derived(notesShellClass());
 
 	let confirmEmpty = $state(false);
 
@@ -14,8 +15,6 @@
 		notesStore.emptyTrash();
 		confirmEmpty = false;
 	}
-
-	const headingClass = $derived('notes-content ' + (uiStore.layout === 'list' ? 'max-w-[720px] mx-auto' : ''));
 </script>
 
 <div class="pt-4 pb-8">
@@ -25,7 +24,7 @@
 			<div class="text-sm">No notes in trash. Notes here are deleted forever after 7 days.</div>
 		</div>
 	{:else}
-		<div class={headingClass}>
+		<div class={shell}>
 			<div class="mb-3 flex items-center gap-3 px-2">
 				<h2 class="text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
 					Trash
@@ -42,22 +41,10 @@
 			</div>
 		</div>
 
-		<div class="notes-content">
-			{#if uiStore.layout === 'grid'}
-				<MasonryGrid notes={trashed} onOpen={openEditor}>
-					{#snippet children(note)}
-						<TrashCard {note} onOpen={openEditor} />
-					{/snippet}
-				</MasonryGrid>
-			{:else}
-				<div class="masonry masonry-list">
-					{#each trashed as note (note.id)}
-						<div>
-							<TrashCard {note} onOpen={openEditor} />
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</div>
+		<NotesFeed notes={trashed} onOpen={openEditor}>
+			{#snippet children(note)}
+				<TrashCard {note} onOpen={openEditor} />
+			{/snippet}
+		</NotesFeed>
 	{/if}
 </div>
