@@ -34,7 +34,6 @@ export const TRASH_PURGE_DAYS = 7;
 export function cloneNote(note: import('$lib/types').Note): import('$lib/types').Note {
 	return {
 		...note,
-		items: note.items.map((i) => ({ ...i })),
 		labels: [...note.labels],
 		images: note.images ? note.images.map((i) => ({ ...i })) : []
 	};

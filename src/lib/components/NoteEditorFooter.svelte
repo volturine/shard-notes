@@ -1,7 +1,6 @@
 <script lang="ts">
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
 	import type { NoteImage } from '$lib/types';
-	import { insertCodeBlock } from '$lib/checklistBody';
 	import { fileToNoteImage } from '$lib/noteImages';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { sha256 } from '$lib/syncHash';
@@ -43,11 +42,6 @@
 	function toggleMore(e: MouseEvent) {
 		e.stopPropagation();
 		moreOpen = !moreOpen;
-	}
-
-	function addCodeBlock() {
-		body = insertCodeBlock(body);
-		onImagesChange?.(images);
 	}
 
 	async function onPickImage(e: Event) {
@@ -137,9 +131,6 @@
 		<input bind:this={fileInput} type="file" accept="image/*" multiple class="hidden" onchange={onPickImage} />
 		<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Add photo" onclick={() => fileInput?.click()} aria-label="Add photo">
 			<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
-		</button>
-		<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Insert code block" onclick={addCodeBlock} aria-label="Code block">
-			<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
 		</button>
 		<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Tags" onclick={openTags} aria-label="Tags">
 			<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M20 12l-8 8-9-9V4h7l10 10zM5 6.5C5 5.7 5.7 5 6.5 5S8 5.7 8 6.5 7.3 8 6.5 8 5 7.3 5 6.5z"/></svg>

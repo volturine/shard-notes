@@ -103,9 +103,7 @@
 	function startNewNote() {
 		const n = notesStore.createNote({
 			title: '',
-			body: '',
-			items: [],
-			kind: 'text'
+			body: ''
 		});
 		editingId = n.id;
 	}

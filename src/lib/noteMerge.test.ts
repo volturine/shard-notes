@@ -3,7 +3,7 @@ import { mergeTwoNotes } from './noteMerge';
 import type { Note, NoteImage } from './types';
 
 function image(id: string, dataUrl: string): NoteImage {
-	return { id, name: `${id}.jpg`, mime: 'image/jpeg', dataUrl };
+	return { id, name: `${id}.jpg`, mime: 'image/jpeg', dataUrl, createdAt: 1 };
 }
 
 function note(updatedAt: number, images: NoteImage[]): Note {
@@ -11,8 +11,6 @@ function note(updatedAt: number, images: NoteImage[]): Note {
 		id: 'note',
 		title: '',
 		body: '',
-		items: [],
-		kind: 'text',
 		color: 'default',
 		pinned: false,
 		archived: false,

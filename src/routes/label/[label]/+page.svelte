@@ -3,10 +3,10 @@
 	import MasonryGrid from '$lib/components/MasonryGrid.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { useOpenEditor } from '$lib/editorContext';
+	import { useEditorActions } from '$lib/editorContext';
 	import { page } from '$app/state';
 
-	const openEditor = useOpenEditor();
+	const { openNote: openEditor } = useEditorActions();
 
 	const labelId = $derived(page.params.label);
 	const label = $derived(notesStore.labels.find((l) => l.id === labelId));

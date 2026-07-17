@@ -4,6 +4,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import type { Label, Note, NoteImage } from '$lib/types';
 import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
+import { normalizeNote } from '$lib/checklistBody';
 
 const DB_NAME = 'google-keep-clone';
 const DB_VERSION = 3;
@@ -48,32 +49,14 @@ function getDB(): Promise<IDBPDatabase> {
 	return dbPromise;
 }
 
-/** Plain, validated data only: never hand Svelte proxies to IndexedDB. */
+/** Plain, validated data only: never hand Svelte proxies to IndexedDB.
+ *  Image bytes live in IMAGES_STORE — note rows keep empty dataUrl placeholders. */
 function detachNote(note: Note): Note {
+	const n = normalizeNote(note);
 	return {
-		id: String(note.id),
-		title: String(note.title ?? ''),
-		body: String(note.body ?? ''),
-		items: (note.items ?? []).map((item) => ({
-			id: String(item.id),
-			text: String(item.text ?? ''),
-			checked: Boolean(item.checked)
-		})),
-		kind: note.kind === 'list' ? 'list' : 'text',
-		color: note.color,
-		pinned: Boolean(note.pinned),
-		archived: Boolean(note.archived),
-		trashed: Boolean(note.trashed),
-		trashedAt: note.trashedAt ?? null,
-		createdAt: Number(note.createdAt),
-		updatedAt: Number(note.updatedAt),
-		reminder: note.reminder ?? null,
-		labels: [...(note.labels ?? [])],
-		images: (note.images ?? []).map((image) => ({
-			id: String(image.id),
-			mime: String(image.mime || 'image/jpeg'),
-			name: image.name == null ? undefined : String(image.name),
-			createdAt: Number(image.createdAt),
+		...n,
+		images: (n.images ?? []).map((image) => ({
+			...image,
 			dataUrl: ''
 		}))
 	};

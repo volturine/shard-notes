@@ -3,9 +3,9 @@
 	import MasonryGrid from '$lib/components/MasonryGrid.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { useOpenEditor } from '$lib/editorContext';
+	import { useEditorActions } from '$lib/editorContext';
 
-	const openEditor = useOpenEditor();
+	const { openNote: openEditor } = useEditorActions();
 
 	const pinned = $derived(notesStore.pinnedNotes);
 	const others = $derived(notesStore.unpinnedNotes);

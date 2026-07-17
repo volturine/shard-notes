@@ -22,13 +22,7 @@
 
 	function parseBodyToLines(body: string): Line[] {
 		if (!body) return [newLine()];
-		let inCode = false;
 		return body.split('\n').map((text) => {
-			if (text.trim().startsWith('```')) {
-				inCode = !inCode;
-				return newLine(text, false);
-			}
-			if (inCode) return newLine(text, false);
 			const m = text.match(CHECK_RE);
 			if (m) return newLine(m[2] ?? '', true, m[1].trim().toLowerCase() === 'x');
 			return newLine(text, false);

@@ -3,9 +3,9 @@
 	import MasonryGrid from '$lib/components/MasonryGrid.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { useOpenEditor } from '$lib/editorContext';
+	import { useEditorActions } from '$lib/editorContext';
 
-	const openEditor = useOpenEditor();
+	const { openNote: openEditor } = useEditorActions();
 	const reminders = $derived(notesStore.notesWithReminders);
 
 	const headingClass = $derived('notes-content ' + (uiStore.layout === 'list' ? 'max-w-[720px] mx-auto' : ''));

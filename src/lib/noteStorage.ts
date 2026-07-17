@@ -1,4 +1,5 @@
 import type { Label, Note } from './types';
+import { normalizeNote } from './checklistBody';
 
 /** Canonical fast-boot mirror. IDB remains the durable device store. */
 export const NOTES_MIRROR_KEY = 'gkc-notes-mirror';
@@ -27,13 +28,13 @@ function parseArray<T>(raw: string | null): T[] | null {
 }
 
 export function stripMirrorPayload(raw: string): Note[] | null {
-	const parsed = parseArray<MirroredNote>(raw);
+	const parsed = parseArray<MirroredNote & Record<string, unknown>>(raw);
 	if (!parsed) return null;
 	return parsed
 		.filter((note) => note && typeof note.id === 'string')
 		.map((note) => {
 			const { hasImages: _hasImages, ...rest } = note;
-			return { ...rest, images: [] } as Note;
+			return normalizeNote({ ...rest, images: [] });
 		});
 }
 

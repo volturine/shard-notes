@@ -14,12 +14,6 @@ export type NoteColor =
 	| 'brown'
 	| 'gray';
 
-export interface ChecklistItem {
-	id: string;
-	text: string;
-	checked: boolean;
-}
-
 export interface NoteImage {
 	id: string;
 	mime: string;
@@ -29,18 +23,13 @@ export interface NoteImage {
 	createdAt: number;
 }
 
-export type NoteKind = 'text' | 'list';
-
 export interface Note {
 	id: string;
 	title: string;
-	/** Plain text body for text notes. Supports ``` fenced code blocks. */
+	/** Plain text body. Supports `[ ]` / `[x]` checklist lines. */
 	body: string;
-	/** Checklist items for list notes. */
-	items: ChecklistItem[];
 	/** Inline photos attached to the note. */
 	images?: NoteImage[];
-	kind: NoteKind;
 	color: NoteColor;
 	pinned: boolean;
 	archived: boolean;

@@ -1,5 +1,5 @@
 // Rune-based notes & labels store. Persists to IndexedDB via $effect.
-import type { Note, Label, NoteColor, ChecklistItem } from '$lib/types';
+import type { Note, Label, NoteColor } from '$lib/types';
 import {
 	getAllNotes,
 	putNote,
@@ -16,7 +16,7 @@ import {
 import { mergeNoteLists, mergeTwoNotes, mergeLabelLists } from '$lib/noteMerge';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
-import { effectiveBody, noteImages, toggleLineAt } from '$lib/checklistBody';
+import { noteImages, toggleLineAt, normalizeNote } from '$lib/checklistBody';
 import { readLabelsMirror, readNotesMirror, writeLabelsMirror, writeNotesMirror } from '$lib/noteStorage';
 import { readTombstones, writeTombstones } from '$lib/syncTombstones';
 
@@ -69,7 +69,9 @@ export class NotesStore {
 			this.recordPersistenceError('Could not read IndexedDB', err);
 		}
 
-		const notes = mergeNoteLists(mirrorNotes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
+		const notes = mergeNoteLists(mirrorNotes, dbNotes)
+			.map((n) => normalizeNote(n as Note))
+			.sort((a, b) => b.updatedAt - a.updatedAt);
 		const labels = mergeLabelLists(mirrorLabels, dbLabels)
 			.map(normalizeLabel)
 			.sort((a, b) => a.name.localeCompare(b.name));
@@ -106,7 +108,9 @@ export class NotesStore {
 	private async rehydrateFromIDB() {
 		try {
 			const [dbNotes, dbLabels] = await Promise.all([getAllNotes(), getAllLabels()]);
-			this.notes = mergeNoteLists(this.notes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
+			this.notes = mergeNoteLists(this.notes, dbNotes)
+				.map((n) => normalizeNote(n as Note))
+				.sort((a, b) => b.updatedAt - a.updatedAt);
 			this.labels = mergeLabelLists(this.labels, dbLabels)
 				.map(normalizeLabel)
 				.sort((a, b) => a.name.localeCompare(b.name));
@@ -138,7 +142,7 @@ export class NotesStore {
 		if (!n) return;
 		const empty =
 			!n.title.trim() &&
-			!effectiveBody(n).trim() &&
+			!(n.body ?? '').trim() &&
 			!noteImages(n).some((i) => (i.dataUrl?.length ?? 0) > 0);
 		if (!empty) return;
 		this.deleteNoteForever(id);
@@ -164,8 +168,6 @@ export class NotesStore {
 			id: uid(),
 			title: partial.title ?? '',
 			body: partial.body ?? '',
-			items: partial.items ?? [],
-			kind: partial.kind ?? 'text',
 			color: partial.color ?? 'default',
 			pinned: partial.pinned ?? false,
 			archived: false,
@@ -209,63 +211,12 @@ export class NotesStore {
 		this.updateNote(id, { reminder });
 	}
 
-	toggleChecklistItem(noteId: string, itemId: string): void {
-		const n = this.notes.find((x) => x.id === noteId);
-		if (!n) return;
-		const items = n.items.map((i) => (i.id === itemId ? { ...i, checked: !i.checked } : i));
-		this.updateNote(noteId, { items });
-	}
-
-	addChecklistItem(noteId: string, text: string): void {
-		if (!text.trim()) return;
-		const n = this.notes.find((x) => x.id === noteId);
-		if (!n) return;
-		const item: ChecklistItem = { id: uid(), text: text.trim(), checked: false };
-		this.updateNote(noteId, { items: [...n.items, item] });
-	}
-
-	updateChecklistItem(noteId: string, itemId: string, text: string): void {
-		const n = this.notes.find((x) => x.id === noteId);
-		if (!n) return;
-		const items = n.items.map((i) => (i.id === itemId ? { ...i, text } : i));
-		this.updateNote(noteId, { items });
-	}
-
-	deleteChecklistItem(noteId: string, itemId: string): void {
-		const n = this.notes.find((x) => x.id === noteId);
-		if (!n) return;
-		this.updateNote(noteId, { items: n.items.filter((i) => i.id !== itemId) });
-	}
-
-	reorderChecklistItems(noteId: string, items: ChecklistItem[]): void {
-		this.updateNote(noteId, { items });
-	}
-
 	/** Toggle `[ ]` / `[x]` line in unified body text. */
 	toggleBodyChecklistLine(noteId: string, lineIndex: number): void {
 		const n = this.notes.find((x) => x.id === noteId);
 		if (!n) return;
-		const body = toggleLineAt(effectiveBody(n), lineIndex);
-		this.updateNote(noteId, { body, kind: 'text', items: [] });
-	}
-
-	setNoteKind(id: string, kind: 'text' | 'list'): void {
-		const n = this.notes.find((x) => x.id === id);
-		if (!n) return;
-		// When converting text -> list, push body text as the first item if present.
-		if (kind === 'list' && n.kind === 'text' && n.body.trim()) {
-			this.updateNote(id, {
-				kind,
-				body: '',
-				items: n.items.length
-					? n.items
-					: [{ id: uid(), text: n.body.trim(), checked: false }]
-			});
-			return;
-		}
-		if (kind === 'text' && n.kind === 'list') {
-			this.updateNote(id, { kind, items: [], body: n.body });
-		}
+		const body = toggleLineAt(n.body ?? '', lineIndex);
+		this.updateNote(noteId, { body });
 	}
 
 	toggleLabel(noteId: string, labelId: string): void {
@@ -350,11 +301,10 @@ export class NotesStore {
 		return base.filter((n) => {
 			const inTitle = n.title.toLowerCase().includes(q);
 			const inBody = n.body.toLowerCase().includes(q);
-			const inItems = n.items.some((i) => i.text.toLowerCase().includes(q));
 			const inLabels = n.labels.some((lid) =>
 				this.labels.find((l) => l.id === lid)?.name.toLowerCase().includes(q)
 			);
-			return inTitle || inBody || inItems || inLabels;
+			return inTitle || inBody || inLabels;
 		});
 	}
 
@@ -369,7 +319,7 @@ export class NotesStore {
 		await clearAllLabels();
 		await bulkPutNotes(data.notes);
 		await bulkPutLabels(data.labels);
-		this.notes = [...data.notes].sort((a, b) => b.updatedAt - a.updatedAt);
+		this.notes = [...data.notes].map((n) => normalizeNote(n as Note)).sort((a, b) => b.updatedAt - a.updatedAt);
 		this.labels = data.labels.map(normalizeLabel).sort((a, b) => a.name.localeCompare(b.name));
 		this.mirrorToLS();
 	}
@@ -483,6 +433,7 @@ export class NotesStore {
 			}
 			const tombstones = result.tombstones ?? {};
 			const cloudNotes = (result.notes as Note[])
+				.map((n) => normalizeNote(n as Note))
 				.filter((note) => (Number(tombstones[note.id]) || 0) < note.updatedAt)
 				.sort((a, b) => b.updatedAt - a.updatedAt);
 			const cloudLabels = ((result.labels ?? []) as Label[])
@@ -535,10 +486,13 @@ export class NotesStore {
 				if ((Number(deletedAt) || 0) > (this.deletedNoteIds[id] || 0)) this.deletedNoteIds[id] = Number(deletedAt);
 			}
 			writeTombstones(this.deletedNoteIds);
-			const remoteNotes = (result.notes as Note[]).filter((note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt);
+			const remoteNotes = (result.notes as Note[])
+				.map((n) => normalizeNote(n as Note))
+				.filter((note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt);
 			const localById = new Map(this.notes.map((note) => [note.id, note]));
 			const remoteById = new Map(remoteNotes.map((note) => [note.id, note]));
 			const mergedNotes = mergeNoteLists(this.notes, remoteNotes)
+				.map((n) => normalizeNote(n as Note))
 				.filter((note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt)
 				.sort((a, b) => b.updatedAt - a.updatedAt);
 			const mergedLabels = mergeLabelLists(this.labels, (result.labels ?? []) as Label[])
@@ -587,8 +541,6 @@ export class NotesStore {
 				id: uid(),
 				title: 'Welcome to Shard 👋',
 				body: 'Small note fragments, offline-first. Notes live on this device and sync when you sign in. Try pins, archive, colours, checklists, and reminders.',
-				items: [],
-				kind: 'text',
 				color: 'yellow',
 				pinned: true,
 				archived: false,
@@ -602,14 +554,7 @@ export class NotesStore {
 			{
 				id: uid(),
 				title: 'Groceries',
-				body: '',
-				items: [
-					{ id: uid(), text: 'Oat milk', checked: true },
-					{ id: uid(), text: 'Sourdough bread', checked: false },
-					{ id: uid(), text: 'Avocados', checked: false },
-					{ id: uid(), text: 'Dark chocolate', checked: false }
-				],
-				kind: 'list',
+				body: '[x] Oat milk\n[ ] Sourdough bread\n[ ] Avocados\n[ ] Dark chocolate',
 				color: 'green',
 				pinned: false,
 				archived: false,
@@ -624,8 +569,6 @@ export class NotesStore {
 				id: uid(),
 				title: 'Reading list',
 				body: 'Antifragile — Taleb\nThe Beginning of Infinity — Deutsch',
-				items: [],
-				kind: 'text',
 				color: 'blue',
 				pinned: false,
 				archived: false,

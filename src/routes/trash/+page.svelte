@@ -3,9 +3,9 @@
 	import MasonryGrid from '$lib/components/MasonryGrid.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { useOpenEditor } from '$lib/editorContext';
+	import { useEditorActions } from '$lib/editorContext';
 
-	const openEditor = useOpenEditor();
+	const { openNote: openEditor } = useEditorActions();
 	const trashed = $derived(notesStore.trashedNotes);
 
 	let confirmEmpty = $state(false);
@@ -44,7 +44,7 @@
 
 		<div class="notes-content">
 			{#if uiStore.layout === 'grid'}
-				<MasonryGrid notes={trashed} onOpen={openEditor} class="masonry-grid">
+				<MasonryGrid notes={trashed} onOpen={openEditor}>
 					{#snippet children(note)}
 						<TrashCard {note} onOpen={openEditor} />
 					{/snippet}

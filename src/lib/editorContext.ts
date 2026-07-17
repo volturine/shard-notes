@@ -19,8 +19,3 @@ export function useEditorActions(): EditorActions {
 	}
 	return fn;
 }
-
-/** @deprecated use useEditorActions().openNote */
-export function useOpenEditor(): (id: string) => void {
-	return useEditorActions().openNote;
-}

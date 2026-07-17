@@ -30,7 +30,7 @@ function dngDataUrl(): string {
 
 function note(dataUrl: string, mime: string, name: string): SyncNote {
 	return {
-		id: 'note-1', title: '', body: '', items: [], kind: 'text', color: 'default',
+		id: 'note-1', title: '', body: '', color: 'default',
 		pinned: false, archived: false, trashed: false, trashedAt: null,
 		createdAt: 1, updatedAt: 10, reminder: null, labels: [],
 		images: [{ id: 'image-1', mime, name, createdAt: 1, dataUrl }]

@@ -5,25 +5,11 @@ export const CHECK_RE = /^\s*(?:[-*•]\s+)?\[([xX ]?)\]\s*(.*)$/;
 
 export type BodySegment =
 	| { type: 'text'; text: string; lineIndex: number }
-	| { type: 'check'; checked: boolean; text: string; lineIndex: number }
-	| { type: 'code'; lang: string; code: string; key: string };
+	| { type: 'check'; checked: boolean; text: string; lineIndex: number };
 
-/** @deprecated use BodySegment */
-export type BodyLine = Extract<BodySegment, { type: 'text' } | { type: 'check' }>;
-
-const FENCE_RE = /```([^\n]*)\n([\s\S]*?)```/g;
-
-/** Unified body: legacy list notes are shown as checklist lines in body. */
-export function effectiveBody(note: Note): string {
-	if (note.kind === 'list' && note.items.length > 0) {
-		return note.items.map((i) => `${i.checked ? '[x]' : '[ ]'} ${i.text}`).join('\n');
-	}
-	return note.body ?? '';
-}
-
-function parseTextChunk(chunk: string, lineOffset: number): BodySegment[] {
-	return chunk.split('\n').map((line, i) => {
-		const lineIndex = lineOffset + i;
+export function parseBody(body: string): BodySegment[] {
+	if (body === '') return [{ type: 'text', text: '', lineIndex: 0 }];
+	return body.split('\n').map((line, lineIndex) => {
 		const m = line.match(CHECK_RE);
 		if (m) {
 			const checked = m[1].trim().toLowerCase() === 'x';
@@ -31,36 +17,6 @@ function parseTextChunk(chunk: string, lineOffset: number): BodySegment[] {
 		}
 		return { type: 'text' as const, text: line, lineIndex };
 	});
-}
-
-export function parseBody(body: string): BodySegment[] {
-	const segments: BodySegment[] = [];
-	let last = 0;
-	let codeIndex = 0;
-	FENCE_RE.lastIndex = 0;
-	let m: RegExpExecArray | null;
-	while ((m = FENCE_RE.exec(body)) !== null) {
-		if (m.index > last) {
-			const chunk = body.slice(last, m.index);
-			const lineOffset = body.slice(0, last).split('\n').length - 1;
-			segments.push(...parseTextChunk(chunk, lineOffset));
-		}
-		segments.push({
-			type: 'code',
-			lang: m[1].trim(),
-			code: m[2].replace(/\n$/, ''),
-			key: `code-${codeIndex++}`
-		});
-		last = m.index + m[0].length;
-	}
-	if (last < body.length) {
-		const lineOffset = body.slice(0, last).split('\n').length - 1;
-		segments.push(...parseTextChunk(body.slice(last), lineOffset));
-	}
-	if (segments.length === 0 && body === '') {
-		return [{ type: 'text', text: '', lineIndex: 0 }];
-	}
-	return segments;
 }
 
 export function toggleLineAt(body: string, lineIndex: number): string {
@@ -75,19 +31,49 @@ export function toggleLineAt(body: string, lineIndex: number): string {
 	return lines.join('\n');
 }
 
-export function insertCodeBlock(body: string): string {
-	const fence = '```\n\n```';
-	if (!body.trim()) return fence;
-	if (body.endsWith('\n')) return `${body}${fence}`;
-	return `${body}\n\n${fence}`;
-}
-
 export function noteImages(note: Note) {
 	return note.images ?? [];
 }
 
 export function noteToPlainText(note: Note): string {
-	const body = effectiveBody(note);
 	const imgs = noteImages(note).length ? `\n[${noteImages(note).length} image(s)]` : '';
-	return `${note.title}\n${body}${imgs}`.trim();
+	return `${note.title}\n${note.body ?? ''}${imgs}`.trim();
+}
+
+/**
+ * Strip legacy fields (`items`, `kind`) from stored notes.
+ * One-shot: if a list note still has items, fold them into body checklist lines.
+ */
+export function normalizeNote(raw: Record<string, unknown> | Note): Note {
+	const n = raw as Note & {
+		items?: { id?: string; text?: string; checked?: boolean }[];
+		kind?: string;
+	};
+	let body = String(n.body ?? '');
+	if (n.kind === 'list' && Array.isArray(n.items) && n.items.length > 0 && !body.trim()) {
+		body = n.items
+			.map((i) => `${i.checked ? '[x]' : '[ ]'} ${i.text ?? ''}`)
+			.join('\n');
+	}
+	return {
+		id: String(n.id),
+		title: String(n.title ?? ''),
+		body,
+		color: n.color ?? 'default',
+		pinned: Boolean(n.pinned),
+		archived: Boolean(n.archived),
+		trashed: Boolean(n.trashed),
+		trashedAt: n.trashedAt ?? null,
+		createdAt: Number(n.createdAt),
+		updatedAt: Number(n.updatedAt),
+		reminder: n.reminder ?? null,
+		labels: [...(n.labels ?? [])],
+		images: (n.images ?? []).map((image) => ({
+			id: String(image.id),
+			mime: String(image.mime || 'image/jpeg'),
+			name: image.name == null ? undefined : String(image.name),
+			createdAt: Number(image.createdAt ?? 0),
+			dataUrl: String(image.dataUrl ?? '')
+		}))
+	};
 }

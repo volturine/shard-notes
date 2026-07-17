@@ -8,6 +8,7 @@
 		type NoteColor
 	} from '$lib/types';
 	import { formatReminder } from '$lib/utils';
+	import { cardSwipeStyle, createCardSwipe } from '$lib/cardSwipe';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 
 	let {
@@ -29,88 +30,36 @@
 		notesStore.deleteNoteForever(note.id);
 	}
 
+	function openUnlessAction(e: MouseEvent) {
+		if (swipe.wasDrag()) {
+			e.stopPropagation();
+			return;
+		}
+		const t = e.target as HTMLElement;
+		if (t.closest('[data-checklist-toggle], [data-photo], button')) return;
+		onOpen(note.id);
+	}
+
 	const labelsForNote = $derived(
 		note.labels
 			.map((id) => notesStore.labels.find((l) => l.id === id))
 			.filter((l): l is NonNullable<typeof l> => !!l)
 	);
 
-	// --- Swipe gestures (touch + trackpad/mouse via Pointer Events) ---
 	let offsetX = $state(0);
 	let dragging = $state(false);
-	let startX = 0;
-	let startY = 0;
-	let decidedHorizontal = false;
-	let pointerId: number | null = null;
-	let justDragged = false;
-	const SWIPE_THRESHOLD = 80;
 
-	function onPointerDown(e: PointerEvent) {
-		if (dragging) return;
-		const target = e.target as HTMLElement;
-		if (target.closest('[data-checklist-toggle], [data-photo], button, input, textarea')) return;
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-		pointerId = e.pointerId;
-		startX = e.clientX;
-		startY = e.clientY;
-		dragging = true;
-		decidedHorizontal = false;
-	}
-
-	function onPointerMove(e: PointerEvent) {
-		if (!dragging || e.pointerId !== pointerId) return;
-		const dx = e.clientX - startX;
-		const dy = e.clientY - startY;
-		if (!decidedHorizontal) {
-			if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-			decidedHorizontal = Math.abs(dx) > Math.abs(dy);
-			if (!decidedHorizontal) {
-				(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-				dragging = false;
-				return;
-			}
-			e.preventDefault();
+	const swipe = createCardSwipe({
+		onSwipeLeft: () => deleteForever(),
+		onSwipeRight: () => restore(),
+		setVisual: (s) => {
+			offsetX = s.offsetX;
+			dragging = s.dragging;
 		}
-		e.preventDefault();
-		offsetX = Math.max(-120, Math.min(120, dx));
-	}
-
-	function onPointerUp(e: PointerEvent) {
-		if (!dragging || e.pointerId !== pointerId) return;
-		const wasDrag = Math.abs(offsetX) >= SWIPE_THRESHOLD;
-		const moved = Math.abs(offsetX) > 5;
-		dragging = false;
-		pointerId = null;
-
-		if (wasDrag) {
-			if (offsetX < 0) {
-				offsetX = -300;
-				setTimeout(() => deleteForever(), 150);
-			} else {
-				offsetX = 300;
-				setTimeout(() => restore(), 150);
-			}
-		} else {
-			offsetX = 0;
-		}
-
-		if (moved) {
-			e.stopPropagation();
-			justDragged = true;
-			setTimeout(() => { justDragged = false; }, 50);
-		}
-	}
-
-	function onPointerCancel(e: PointerEvent) {
-		if (e.pointerId !== pointerId) return;
-		dragging = false;
-		pointerId = null;
-		offsetX = 0;
-	}
+	});
 </script>
 
 <div class="group relative overflow-hidden rounded-lg">
-	<!-- Swipe backgrounds -->
 	{#if offsetX < 0}
 		<div class="absolute inset-0 flex items-center justify-end rounded-lg bg-red-600 pr-4 text-white">
 			<svg viewBox="0 0 24 24" class="h-6 w-6 fill-none stroke-current" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z" /></svg>
@@ -121,7 +70,6 @@
 		</div>
 	{/if}
 
-	<!-- Action icons: always visible on touch devices, hover on desktop -->
 	<div class="absolute right-2 top-2 z-[2] flex gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
 		<button
 			type="button"
@@ -144,13 +92,13 @@
 	</div>
 
 	<article
-		class="relative z-[1] flex w-full max-h-[320px] cursor-pointer flex-col overflow-y-auto overflow-x-hidden rounded-lg border border-black/5 shadow-sm transition-shadow dark:border-white/10"
-		style="background-color: {bgColor(note.color)}; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y; {offsetX !== 0 || dragging ? `transform: translate3d(${offsetX}px, 0, 0);` : 'transform: none;'} will-change: transform; transition: {dragging ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1), box-shadow 0.2s'};"
-		onpointerdown={onPointerDown}
-		onpointermove={onPointerMove}
-		onpointerup={onPointerUp}
-		onpointercancel={onPointerCancel}
-		onclick={(e) => { if (justDragged) { e.stopPropagation(); return; } onOpen(note.id); }}
+		class="scrollable relative z-[1] flex w-full max-h-[320px] cursor-pointer flex-col overflow-y-auto overflow-x-hidden rounded-lg border border-black/5 shadow-sm transition-shadow dark:border-white/10"
+		style="background-color: {bgColor(note.color)}; {cardSwipeStyle(offsetX, dragging)}"
+		onpointerdown={swipe.onPointerDown}
+		onpointermove={swipe.onPointerMove}
+		onpointerup={swipe.onPointerUp}
+		onpointercancel={swipe.onPointerCancel}
+		onclick={openUnlessAction}
 	>
 		{#if note.reminder != null}
 			<div class="flex items-center gap-1 rounded-t-lg bg-black/5 px-3 py-1 text-xs text-[var(--gkc-text-muted)] dark:bg-white/5">
@@ -163,7 +111,7 @@
 			{#if note.title}
 				<h3 class="mb-1 text-sm font-medium leading-snug text-[var(--gkc-text)]">{note.title}</h3>
 			{/if}
-			<NoteBodyDisplay {note} clamp={false} />
+			<NoteBodyDisplay {note} />
 		</div>
 
 		{#if labelsForNote.length}

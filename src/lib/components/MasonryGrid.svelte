@@ -27,16 +27,16 @@
 		return () => window.removeEventListener('resize', update);
 	});
 
-	/** Rough height for shortest-column packing (cards are clamped in NoteCard). */
+	/** Rough height for shortest-column packing (cards scroll at max-h 320px). */
 	function estimateHeight(note: Note): number {
 		let h = 20;
 		if (note.reminder != null) h += 26;
 		if (note.title) h += 22;
 		const body = note.body ?? '';
-		const lineEstimate = Math.min(8, body.split('\n').length + 1) * 18;
-		h += Math.min(200, Math.max(36, lineEstimate));
+		const lineEstimate = (body.split('\n').length + 1) * 18;
+		h += Math.min(280, Math.max(36, lineEstimate));
 		if (note.labels?.length) h += 26;
-		return Math.min(h, 300);
+		return Math.min(h, 320);
 	}
 
 	const columns = $derived.by(() => {

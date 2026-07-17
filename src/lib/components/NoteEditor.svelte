@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { effectiveBody, noteToPlainText, noteImages } from '$lib/checklistBody';
+	import { noteToPlainText, noteImages } from '$lib/checklistBody';
 	import type { NoteColor, NoteImage } from '$lib/types';
 	import { KEEP_COLORS, KEEP_DARK_COLORS } from '$lib/types';
 	import ColorPalette from './ColorPalette.svelte';
@@ -37,10 +37,10 @@
 		if (syncedId !== note.id) {
 			syncedId = note.id;
 			title = note.title;
-			body = effectiveBody(note);
+			body = note.body ?? '';
 			images = noteImages(note).map((i) => ({ ...i }));
 			draftDirty = false;
-			}
+		}
 	});
 
 	$effect(() => {
@@ -73,22 +73,22 @@
 		if (timer) clearTimeout(timer);
 		timer = setTimeout(() => {
 			if (!note) return;
-			commit({ title, body, items: [], kind: 'text', images });
+			commit({ title, body, images });
 		}, 250);
 	}
 
 	function commitNow(nextImages?: NoteImage[]) {
 		if (!note) return;
 		draftDirty = true;
-		commit({ title, body, items: [], kind: 'text', images: nextImages ?? images });
+		commit({ title, body, images: nextImages ?? images });
 	}
 
 	async function close() {
 		if (timer) clearTimeout(timer);
 		if (note && draftDirty) {
-			commit({ title, body, items: [], kind: 'text', images });
+			commit({ title, body, images });
 			try {
-				await notesStore.flushNote(note.id, { title, body, items: [], kind: 'text', images });
+				await notesStore.flushNote(note.id, { title, body, images });
 			} catch (err) {
 				console.error('[NoteEditor] flush failed:', err);
 			}
@@ -204,7 +204,7 @@
 				<BodyEditor
 					bind:body
 					oninput={scheduleCommit}
-					placeholder="Take a note… [ ] checklist · ``` for code blocks"
+					placeholder="Take a note… type [ ] for a checklist"
 					focusSignal={focusBodySignal}
 				/>
 			</div>
