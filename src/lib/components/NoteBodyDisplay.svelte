@@ -2,17 +2,26 @@
 	import type { Note } from '$lib/types';
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
 	import { parseBody, noteImages } from '$lib/checklistBody';
+	import { isImageAttachment, fileIconLabel, openAttachment } from '$lib/noteImages';
 	import { notesStore } from '$lib/stores/notes.svelte';
 
 	let { note }: { note: Note } = $props();
 
 	const segments = $derived(parseBody(note.body ?? ''));
-	const images = $derived(noteImages(note));
+	const attachments = $derived(noteImages(note));
+	const photos = $derived(attachments.filter(isImageAttachment));
+	const files = $derived(attachments.filter((a) => !isImageAttachment(a)));
 	let focusedImageIndex = $state<number | null>(null);
 
 	function focusImage(index: number, event: MouseEvent) {
 		event.stopPropagation();
 		focusedImageIndex = index;
+	}
+
+	function openFile(event: MouseEvent, id: string) {
+		event.stopPropagation();
+		const file = files.find((f) => f.id === id);
+		if (file) openAttachment(file);
 	}
 
 	function toggle(lineIndex: number) {
@@ -49,9 +58,9 @@
 	{/each}
 </div>
 
-{#if images.length > 0}
+{#if photos.length > 0}
 	<div class="mt-2 flex flex-wrap gap-1.5">
-		{#each images as img, index (img.id)}
+		{#each photos as img, index (img.id)}
 			<button
 				type="button"
 				class="block max-w-full touch-manipulation overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -70,4 +79,23 @@
 	</div>
 {/if}
 
-<PhotoFullscreen {images} bind:activeIndex={focusedImageIndex} />
+{#if files.length > 0}
+	<div class="mt-2 flex flex-col gap-1">
+		{#each files as file (file.id)}
+			<button
+				type="button"
+				class="flex w-full items-center gap-2 rounded-md border border-black/10 bg-black/5 px-2 py-1.5 text-left touch-manipulation dark:border-white/10 dark:bg-white/5"
+				data-file
+				onclick={(event) => openFile(event, file.id)}
+				aria-label={`Open ${file.name ?? 'file'}`}
+			>
+				<span
+					class="grid h-7 w-7 shrink-0 place-items-center rounded bg-black/10 text-[9px] font-bold text-[var(--gkc-text)] dark:bg-white/10"
+				>{fileIconLabel(file.mime, file.name)}</span>
+				<span class="min-w-0 flex-1 truncate text-xs text-[var(--gkc-text)]">{file.name || 'File'}</span>
+			</button>
+		{/each}
+	</div>
+{/if}
+
+<PhotoFullscreen images={photos} bind:activeIndex={focusedImageIndex} />

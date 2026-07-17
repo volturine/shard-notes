@@ -34,7 +34,7 @@ export function createCardSwipe(opts: {
 	function onPointerDown(e: PointerEvent) {
 		if (dragging) return;
 		const target = e.target as HTMLElement;
-		if (target.closest('[data-checklist-toggle], [data-photo], button, input, textarea')) return;
+		if (target.closest('[data-checklist-toggle], [data-photo], [data-file], button, input, textarea')) return;
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 		pointerId = e.pointerId;
 		startX = e.clientX;

@@ -17,7 +17,7 @@ export type NoteColor =
 export interface NoteImage {
 	id: string;
 	mime: string;
-	/** data: URL (JPEG) */
+	/** data: URL — photos, or any attached file */
 	dataUrl: string;
 	name?: string;
 	createdAt: number;
@@ -28,7 +28,7 @@ export interface Note {
 	title: string;
 	/** Plain text body. Supports `[ ]` / `[x]` checklist lines. */
 	body: string;
-	/** Inline photos attached to the note. */
+	/** Attachments (photos + any files). Stored as data URLs / IDB blobs. */
 	images?: NoteImage[];
 	color: NoteColor;
 	pinned: boolean;

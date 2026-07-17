@@ -17,7 +17,7 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
 export function formatStorageError(err: unknown): string {
 	if (err instanceof DOMException) {
 		if (err.name === 'QuotaExceededError') {
-			return 'Storage full on this device — free space or remove old notes/photos.';
+			return 'Storage full on this device — free space or remove old notes/attachments.';
 		}
 		if (err.name === 'DataCloneError') {
 			return 'Browser could not store this data — refresh and try again.';

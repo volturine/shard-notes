@@ -36,7 +36,7 @@
 			return;
 		}
 		const t = e.target as HTMLElement;
-		if (t.closest('[data-checklist-toggle], [data-photo], button')) return;
+		if (t.closest('[data-checklist-toggle], [data-photo], [data-file], button')) return;
 		onOpen(note.id);
 	}
 

@@ -36,8 +36,14 @@ export function noteImages(note: Note) {
 }
 
 export function noteToPlainText(note: Note): string {
-	const imgs = noteImages(note).length ? `\n[${noteImages(note).length} image(s)]` : '';
-	return `${note.title}\n${note.body ?? ''}${imgs}`.trim();
+	const atts = noteImages(note);
+	const imgs = atts.filter((a) => a.mime.startsWith('image/')).length;
+	const files = atts.length - imgs;
+	const parts: string[] = [];
+	if (imgs) parts.push(`${imgs} image(s)`);
+	if (files) parts.push(`${files} file(s)`);
+	const suffix = parts.length ? `\n[${parts.join(', ')}]` : '';
+	return `${note.title}\n${note.body ?? ''}${suffix}`.trim();
 }
 
 /**
