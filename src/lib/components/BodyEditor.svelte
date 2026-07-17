@@ -56,7 +56,7 @@
 	}
 
 	function onLineInput(i: number, e: Event) {
-		const input = e.target as HTMLInputElement;
+		const input = e.target as HTMLTextAreaElement;
 		const value = input.value;
 
 		// Plain text line → auto-convert to checklist when user types [ ] / [x]
@@ -107,7 +107,7 @@
 				pendingCursor = 0;
 			}
 		} else if (e.key === 'Backspace' && i > 0) {
-			const input = e.target as HTMLInputElement;
+			const input = e.target as HTMLTextAreaElement;
 			if (input.selectionStart === 0 && input.selectionEnd === 0) {
 				e.preventDefault();
 				// Merge with previous line
@@ -130,7 +130,7 @@
 			pendingFocus = null;
 			pendingCursor = null;
 			queueMicrotask(() => {
-				const el = container?.querySelector(`[data-line="${idx}"]`) as HTMLInputElement;
+				const el = container?.querySelector(`[data-line="${idx}"]`) as HTMLTextAreaElement;
 				if (el) {
 					el.focus();
 					if (cursor !== null) el.setSelectionRange(cursor, cursor);
@@ -143,16 +143,16 @@
 	$effect(() => {
 		if (focusSignal > 0) {
 			queueMicrotask(() => {
-				const el = container?.querySelector('[data-line="0"]') as HTMLInputElement;
+				const el = container?.querySelector('[data-line="0"]') as HTMLTextAreaElement;
 				if (el) el.focus();
 			});
 		}
 	});
 </script>
 
-<div bind:this={container} class="block w-full text-sm leading-relaxed text-[var(--gkc-text)]">
+<div bind:this={container} class="block w-full min-w-0 text-sm leading-relaxed text-[var(--gkc-text)]">
 	{#each lines as line, i (line.id)}
-		<div class="flex items-start gap-2 py-0.5">
+		<div class="flex w-full min-w-0 items-start gap-2 py-0.5">
 			{#if line.isCheck}
 				<button
 					type="button"
@@ -165,15 +165,15 @@
 					{#if line.checked}✓{/if}
 				</button>
 			{/if}
-			<input
-				type="text"
+			<textarea
+				rows="1"
 				data-line={i}
 				value={line.text}
 				oninput={(e) => onLineInput(i, e)}
 				onkeydown={(e) => onLineKeydown(e, i)}
 				placeholder={i === 0 && lines.length === 1 && !line.isCheck ? placeholder : ''}
-				class="flex-1 min-w-0 bg-transparent outline-none placeholder:text-[var(--gkc-text-muted)] {line.checked ? 'line-through opacity-50' : ''}"
-			/>
+				class="flex-1 min-w-0 resize-none overflow-hidden bg-transparent outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content] {line.checked ? 'line-through opacity-50' : ''}"
+			></textarea>
 		</div>
 	{/each}
 </div>

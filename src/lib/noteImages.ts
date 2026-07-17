@@ -64,6 +64,8 @@ export async function fileToNoteImage(file: File): Promise<NoteImage> {
 			md: 'text/markdown',
 			json: 'application/json',
 			csv: 'text/csv',
+			yaml: 'text/yaml',
+			yml: 'text/yaml',
 			zip: 'application/zip',
 			png: 'image/png',
 			jpg: 'image/jpeg',
@@ -88,7 +90,7 @@ export async function fileToNoteImage(file: File): Promise<NoteImage> {
 
 export function isInlinePreviewable(att: Pick<NoteImage, 'mime'>): boolean {
 	const mime = att.mime.toLowerCase();
-	return mime === 'application/pdf' || mime.startsWith('text/') || mime === 'application/json' || mime.startsWith('audio/') || mime.startsWith('video/');
+	return mime === 'application/pdf' || mime.startsWith('text/') || mime === 'application/json' || mime === 'application/yaml' || mime === 'application/x-yaml' || mime.startsWith('audio/') || mime.startsWith('video/');
 }
 
 /** Open an unsupported attachment through the platform save/share flow. */
