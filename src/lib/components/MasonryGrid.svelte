@@ -1,15 +1,18 @@
 <script lang="ts">
 	import type { Note } from '$lib/types';
+	import type { Snippet } from 'svelte';
 	import NoteCard from './NoteCard.svelte';
 
 	let {
 		notes,
 		onOpen,
-		class: className = ''
+		class: className = '',
+		children
 	}: {
 		notes: Note[];
 		onOpen: (id: string) => void;
 		class?: string;
+		children?: Snippet<[Note]>;
 	} = $props();
 
 	let colCount = $state(2);
@@ -17,7 +20,7 @@
 	$effect(() => {
 		const update = () => {
 			const w = window.innerWidth;
-			colCount = w >= 1100 ? 5 : w >= 768 ? 4 : w >= 600 ? 3 : 2;
+			colCount = w >= 1700 ? 7 : w >= 1400 ? 6 : w >= 1100 ? 5 : w >= 768 ? 4 : w >= 600 ? 3 : 2;
 		};
 		update();
 		window.addEventListener('resize', update);
@@ -56,7 +59,11 @@
 	{#each columns as col, i (i)}
 		<div class="masonry-balanced-col">
 			{#each col as note (note.id)}
-				<NoteCard {note} {onOpen} />
+				{#if children}
+					{@render children(note)}
+				{:else}
+					<NoteCard {note} {onOpen} />
+				{/if}
 			{/each}
 		</div>
 	{/each}

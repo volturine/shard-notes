@@ -99,7 +99,7 @@
 </script>
 
 <aside
-	class="flex h-full flex-col gap-0.5 overflow-y-auto sidebar-scroll pt-2 pr-2"
+	class="scrollable flex h-full flex-col gap-0.5 overflow-y-auto sidebar-scroll pt-2 pr-2"
 	transition:fly={{ x: -20, duration: 120 }}
 >
 	{#each navItems as item (item.view)}

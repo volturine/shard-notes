@@ -1,7 +1,7 @@
 import type { Note } from './types';
 
 /** Lines like `[ ] task`, `[] task`, `[x] done`, `- [ ] item` */
-const CHECK_RE = /^\s*(?:[-*•]\s+)?\[([xX ]?)\]\s*(.*)$/;
+export const CHECK_RE = /^\s*(?:[-*•]\s+)?\[([xX ]?)\]\s*(.*)$/;
 
 export type BodySegment =
 	| { type: 'text'; text: string; lineIndex: number }

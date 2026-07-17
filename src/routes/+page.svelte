@@ -14,11 +14,14 @@
 
 	const filteredPinned = $derived(search ? notesStore.search(uiStore.search, pinned) : pinned);
 	const filteredOthers = $derived(search ? notesStore.search(uiStore.search, others) : others);
+
+	// In list view, constrain headings to match the 720px list width.
+	const headingClass = $derived('notes-content ' + (uiStore.layout === 'list' ? 'max-w-[720px] mx-auto' : ''));
 </script>
 
 <div class="pt-4 pb-8">
 	{#if filteredPinned.length > 0}
-		<div class="notes-content">
+		<div class={headingClass}>
 			<h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
 				Pinned
 			</h2>
@@ -43,7 +46,7 @@
 
 	{#if filteredOthers.length > 0 || filteredPinned.length === 0}
 		{#if filteredPinned.length > 0}
-			<div class="notes-content">
+			<div class={headingClass}>
 				<h2 class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
 					Others
 				</h2>

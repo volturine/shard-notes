@@ -49,10 +49,10 @@ html {
 	background-color: var(--gkc-bg);
 }
 
-/* Force the main app container into its own GPU compositing layer.
-   This prevents iOS Safari from repainting the entire page when a
-   position:fixed overlay (NoteEditor) is shown/hidden on top of it. */
-.app-shell {
+/* NoteEditor overlay: isolate the app shell only while the editor is open
+   to avoid full-page repaint on iOS Safari. Applied via .editor-open class
+   on <html> so it doesn't interfere with normal touch scrolling. */
+html.editor-open .app-shell {
 	transform: translateZ(0);
 	-webkit-transform: translateZ(0);
 	will-change: transform;
@@ -61,6 +61,9 @@ html {
 html,
 body {
 	height: 100%;
+	margin: 0;
+	overflow: hidden;
+	overscroll-behavior: none;
 }
 
 body {
@@ -69,8 +72,13 @@ body {
 	font-family: 'Google Sans', 'Roboto', system-ui, Arial, sans-serif;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
-	overscroll-behavior: none;
+}
+
+/* Allow touch scrolling on elements that opt in. */
+.scrollable {
 	-webkit-overflow-scrolling: touch;
+	touch-action: pan-y;
+	overscroll-behavior: contain;
 }
 
 /* Note grid — column masonry in grid mode (cards pack up columns); list = single column. */
@@ -113,6 +121,19 @@ body {
 	}
 }
 
+@media (min-width: 1400px) {
+	.masonry-grid {
+		column-count: 6;
+	}
+}
+
+@media (min-width: 1700px) {
+	.masonry-grid {
+		column-count: 7;
+		padding: 0 32px;
+	}
+}
+
 .masonry-list {
 	display: flex;
 	flex-direction: column;
@@ -130,10 +151,15 @@ body {
 /* Shared column width: composer, grid, and list align. */
 .notes-content {
 	width: 100%;
-	max-width: 720px;
 	margin-inline: auto;
 	padding-inline: 0;
 	box-sizing: border-box;
+}
+
+/* List/row view: constrain to a readable width. Grid view fills full width. */
+.masonry-list {
+	max-width: 720px;
+	margin-inline: auto;
 }
 
 .masonry-balanced {
@@ -232,6 +258,7 @@ body {
 	touch-action: manipulation;
 	-webkit-tap-highlight-color: transparent;
 }
+
 .icon-btn:hover {
 	background-color: rgba(0, 0, 0, 0.07);
 }

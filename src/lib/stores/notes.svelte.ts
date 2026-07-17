@@ -553,9 +553,11 @@ export class NotesStore {
 				const remote = remoteById.get(merged.id);
 				if (!local || !remote) return !local;
 				if (remote.updatedAt > local.updatedAt) return true;
-				const localHasImageData = (local.images ?? []).some((image) => image.dataUrl.length > 0);
-				const mergedHasImageData = (merged.images ?? []).some((image) => image.dataUrl.length > 0);
-				return !localHasImageData && mergedHasImageData;
+				const localImages = new Map((local.images ?? []).map((image) => [image.id, image]));
+				return (merged.images ?? []).some((image) => {
+					const previous = localImages.get(image.id);
+					return !previous || (!previous.dataUrl.length && image.dataUrl.length > 0);
+				});
 			});
 
 			const tombstonedLocalIds = this.notes
@@ -564,8 +566,8 @@ export class NotesStore {
 			this.notes = mergedNotes;
 			this.labels = mergedLabels;
 			this.mirrorToLS();
+			for (const note of notesToPersist) await putNote(note);
 			await Promise.all([
-				...notesToPersist.map((note) => putNote(note)),
 				...tombstonedLocalIds.map((id) => deleteNote(id)),
 				...(labelsChanged ? [bulkPutLabels(mergedLabels)] : [])
 			]);

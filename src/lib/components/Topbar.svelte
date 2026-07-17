@@ -8,8 +8,6 @@
 	let fileInputEl: HTMLInputElement | null = $state(null);
 	let settingsOpen = $state(false);
 	let syncOpen = $state(false);
-
-	let refreshing = $state(false);
 	let quickSyncBusy = $state(false);
 
 	function releaseCloudBtn(el: HTMLButtonElement) {
@@ -31,16 +29,6 @@
 
 	function onCloudPointerUp(e: PointerEvent) {
 		releaseCloudBtn(e.currentTarget as HTMLButtonElement);
-	}
-
-	async function refresh() {
-		if (refreshing) return;
-		refreshing = true;
-		if (syncStore.isLoggedIn) {
-			await notesStore.syncWithCloud();
-		}
-		await notesStore.hardResync();
-		refreshing = false;
 	}
 
 	async function exportBackup() {
@@ -109,7 +97,7 @@
 	</button>
 
 	<div
-		class="flex h-12 flex-1 items-center gap-2 rounded-full border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-4 sm:max-w-2xl"
+		class="flex h-12 flex-1 items-center gap-2 rounded-full border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-4"
 	>
 		<span class="text-[var(--gkc-text-muted)]">🔍</span>
 		<input
@@ -126,15 +114,6 @@
 			>✕</button>
 		{/if}
 	</div>
-
-	<button
-		class="icon-btn mobile-hide h-10 w-10 p-2 sm:block"
-		title="Refresh"
-		onclick={refresh}
-		aria-label="Refresh"
-	>
-		<svg viewBox="0 0 24 24" class={'h-5 w-5 fill-current' + (refreshing ? ' animate-spin' : '')}><path d="M17.65 6.35A7 7 0 1019.73 14h-2.08A5 5 0 1 1 12 7v3l4-4-4-4v3z"/></svg>
-	</button>
 
 	<button
 		type="button"

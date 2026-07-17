@@ -8,6 +8,7 @@
 	import ReminderPicker from './ReminderPicker.svelte';
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
+	import BodyEditor from './BodyEditor.svelte';
 
 	let {
 		noteId = $bindable(),
@@ -27,6 +28,8 @@
 	let labelOpen = $state(false);
 	let copyFlash = $state(false);
 	let images = $state<NoteImage[]>([]);
+	let draftDirty = false;
+	let focusBodySignal = $state(0);
 
 	let syncedId: string | null = null;
 	$effect(() => {
@@ -36,7 +39,8 @@
 			title = note.title;
 			body = effectiveBody(note);
 			images = noteImages(note).map((i) => ({ ...i }));
-		}
+			draftDirty = false;
+			}
 	});
 
 	$effect(() => {
@@ -65,6 +69,7 @@
 
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	function scheduleCommit() {
+		draftDirty = true;
 		if (timer) clearTimeout(timer);
 		timer = setTimeout(() => {
 			if (!note) return;
@@ -74,20 +79,21 @@
 
 	function commitNow(nextImages?: NoteImage[]) {
 		if (!note) return;
+		draftDirty = true;
 		commit({ title, body, items: [], kind: 'text', images: nextImages ?? images });
 	}
 
 	async function close() {
 		if (timer) clearTimeout(timer);
-		if (note) {
+		if (note && draftDirty) {
 			commit({ title, body, items: [], kind: 'text', images });
 			try {
 				await notesStore.flushNote(note.id, { title, body, items: [], kind: 'text', images });
 			} catch (err) {
 				console.error('[NoteEditor] flush failed:', err);
 			}
-			notesStore.discardIfEmpty(note.id);
 		}
+		if (note) notesStore.discardIfEmpty(note.id);
 		onClose();
 	}
 
@@ -113,7 +119,7 @@
 
 {#if isOpen && note}
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+		class="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/40 p-4"
 		role="presentation"
 		onclick={(e) => {
 			if (e.target === e.currentTarget) close();
@@ -123,7 +129,7 @@
 		}}
 	>
 		<div
-			class="flex h-[72vh] max-h-[90vh] min-h-[50vh] w-full max-w-2xl flex-col rounded-2xl shadow-2xl"
+			class="flex h-[72dvh] max-h-[90dvh] min-h-[50dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl"
 			style="background-color: {bgColor(note.color)};"
 			role="dialog"
 			aria-modal="true"
@@ -180,21 +186,27 @@
 				</div>
 			</header>
 
-			<div class="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-6 pt-4 pb-3">
+			<div class="scrollable min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 pt-4 pb-3">
 				<input
 					type="text"
 					placeholder="Title"
 					bind:value={title}
 					oninput={scheduleCommit}
-					class="mb-3 w-full bg-transparent text-xl font-medium text-[var(--gkc-text)] placeholder:text-[var(--gkc-text-muted)] outline-none"
+					onkeydown={(e) => {
+						if (e.key === 'Enter') {
+							e.preventDefault();
+							focusBodySignal++;
+						}
+					}}
+					class="mb-3 block w-full bg-transparent text-xl font-medium text-[var(--gkc-text)] placeholder:text-[var(--gkc-text-muted)] outline-none"
 				/>
 
-				<textarea
-					placeholder="Take a note… [ ] checklist · ``` for code blocks"
-					bind:value={body}
+				<BodyEditor
+					bind:body
 					oninput={scheduleCommit}
-					class="min-h-[28vh] w-full flex-1 resize-none bg-transparent text-sm leading-relaxed text-[var(--gkc-text)] placeholder:text-[var(--gkc-text-muted)] outline-none"
-				></textarea>
+					placeholder="Take a note… [ ] checklist · ``` for code blocks"
+					focusSignal={focusBodySignal}
+				/>
 			</div>
 
 			<NoteEditorFooter

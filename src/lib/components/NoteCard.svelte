@@ -25,6 +25,7 @@
 	}
 
 	function openUnlessAction(e: MouseEvent) {
+		if (justDragged) { e.stopPropagation(); return; }
 		const t = e.target as HTMLElement;
 		if (t.closest('[data-checklist-toggle], [data-photo]')) return;
 		onOpen(note.id);
@@ -36,48 +37,60 @@
 			.filter((l): l is NonNullable<typeof l> => !!l)
 	);
 
-	// --- iOS-style swipe gestures ---
+	// --- Swipe gestures (touch + trackpad/mouse via Pointer Events) ---
 	let offsetX = $state(0);
 	let dragging = $state(false);
 	let startX = 0;
 	let startY = 0;
 	let startTime = 0;
 	let decidedHorizontal = false;
+	let pointerId: number | null = null;
+	let justDragged = false;
 
 	const SWIPE_THRESHOLD = 80;
 
-	function onTouchStart(e: TouchEvent) {
-		if (e.touches.length !== 1) return;
-		const t = e.touches[0];
-		startX = t.clientX;
-		startY = t.clientY;
+	function onPointerDown(e: PointerEvent) {
+		if (dragging) return;
+		const target = e.target as HTMLElement;
+		if (target.closest('[data-checklist-toggle], [data-photo], button, input, textarea')) return;
+		// Capture the pointer so we keep getting move events even outside the card
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		pointerId = e.pointerId;
+		startX = e.clientX;
+		startY = e.clientY;
 		startTime = Date.now();
 		dragging = true;
 		decidedHorizontal = false;
 	}
 
-	function onTouchMove(e: TouchEvent) {
-		if (!dragging || e.touches.length !== 1) return;
-		const t = e.touches[0];
-		const dx = t.clientX - startX;
-		const dy = t.clientY - startY;
+	function onPointerMove(e: PointerEvent) {
+		if (!dragging || e.pointerId !== pointerId) return;
+		const dx = e.clientX - startX;
+		const dy = e.clientY - startY;
 		if (!decidedHorizontal) {
 			if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
 			decidedHorizontal = Math.abs(dx) > Math.abs(dy);
 			if (!decidedHorizontal) {
+				// Vertical gesture — release capture and let the card scroll
+				(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
 				dragging = false;
 				return;
 			}
+			// Horizontal — prevent the card from scrolling vertically
+			e.preventDefault();
 		}
 		e.preventDefault();
 		offsetX = Math.max(-120, Math.min(120, dx));
 	}
 
-	function onTouchEnd() {
-		if (!dragging) return;
+	function onPointerUp(e: PointerEvent) {
+		if (!dragging || e.pointerId !== pointerId) return;
+		const wasDrag = Math.abs(offsetX) >= SWIPE_THRESHOLD;
+		const moved = Math.abs(offsetX) > 5;
 		dragging = false;
+		pointerId = null;
 
-		if (Math.abs(offsetX) >= SWIPE_THRESHOLD) {
+		if (wasDrag) {
 			if (offsetX < 0) {
 				offsetX = -300;
 				setTimeout(() => toggleArchive(), 150);
@@ -88,6 +101,21 @@
 		} else {
 			offsetX = 0;
 		}
+
+		// If the pointer moved at all, suppress the click that follows
+		if (moved) {
+			e.stopPropagation();
+			// Also set a flag for the click handler
+			justDragged = true;
+			setTimeout(() => { justDragged = false; }, 50);
+		}
+	}
+
+	function onPointerCancel(e: PointerEvent) {
+		if (e.pointerId !== pointerId) return;
+		dragging = false;
+		pointerId = null;
+		offsetX = 0;
 	}
 </script>
 
@@ -103,12 +131,13 @@
 	{/if}
 
 	<article
-		class="relative z-[1] flex w-full max-h-[320px] cursor-pointer flex-col overflow-hidden rounded-lg border border-black/5 shadow-sm transition-shadow touch-pan-y dark:border-white/10"
-		style="background-color: {bgColor(note.color)}; {offsetX !== 0 || dragging ? `transform: translate3d(${offsetX}px, 0, 0);` : 'transform: none;'} will-change: transform; transition: {dragging ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1), box-shadow 0.2s'};"
+		class="relative z-[1] flex w-full max-h-[320px] cursor-pointer flex-col overflow-y-auto overflow-x-hidden rounded-lg border border-black/5 shadow-sm transition-shadow dark:border-white/10"
+		style="background-color: {bgColor(note.color)}; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y; {offsetX !== 0 || dragging ? `transform: translate3d(${offsetX}px, 0, 0);` : 'transform: none;'} will-change: transform; transition: {dragging ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1), box-shadow 0.2s'};"
 		class:shadow-md={note.pinned}
-		ontouchstart={onTouchStart}
-		ontouchmove={onTouchMove}
-		ontouchend={onTouchEnd}
+		onpointerdown={onPointerDown}
+		onpointermove={onPointerMove}
+		onpointerup={onPointerUp}
+		onpointercancel={onPointerCancel}
 		onclick={openUnlessAction}
 	>
 		{#if note.reminder != null}
@@ -120,11 +149,11 @@
 			</div>
 		{/if}
 
-		<div class="block min-h-0 flex-1 w-full overflow-hidden p-3 pb-2 text-left">
+		<div class="block min-h-0 flex-1 w-full p-3 pb-2 text-left">
 			{#if note.title}
 				<h3 class="mb-1 text-sm font-medium leading-snug text-[var(--gkc-text)]">{note.title}</h3>
 			{/if}
-			<NoteBodyDisplay {note} clamp={true} />
+			<NoteBodyDisplay {note} clamp={false} />
 		</div>
 
 		{#if labelsForNote.length}

@@ -119,6 +119,13 @@
 		}
 	});
 
+	// Toggle editor-open class on <html> for compositing isolation.
+	$effect(() => {
+		if (typeof document !== 'undefined') {
+			document.documentElement.classList.toggle('editor-open', editingId !== null);
+		}
+	});
+
 	function closeEditor() {
 		editingId = null;
 	}
@@ -139,7 +146,7 @@
 	<title>Shard</title>
 </svelte:head>
 
-<div class="app-shell flex h-screen w-screen overflow-hidden bg-[var(--gkc-bg)] text-[var(--gkc-text)]" style="height: 100vh;">
+<div class="app-shell flex w-screen overflow-hidden bg-[var(--gkc-bg)] text-[var(--gkc-text)]" style="height: 100dvh;">
 	{#if isMobile}
 		{#if uiStore.sidebarOpen}
 			<button
@@ -167,9 +174,9 @@
 		{/if}
 	{/if}
 
-	<div class="flex min-w-0 flex-1 flex-col">
+	<div class="flex min-w-0 min-h-0 flex-1 flex-col">
 		<Topbar />
-		<main class="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6">
+		<main class="scrollable min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6">
 			{@render children()}
 		</main>
 	</div>

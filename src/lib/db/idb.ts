@@ -122,9 +122,10 @@ async function imageFromStoredValue(
 }
 
 async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
-	const images = await Promise.all(
-		(note.images ?? []).map((meta) => imageFromStoredValue(db, note.id, meta))
-	);
+	const images: Array<NoteImage | null> = [];
+	for (const meta of note.images ?? []) {
+		images.push(await imageFromStoredValue(db, note.id, meta));
+	}
 	return { ...note, images: images.filter((image): image is NoteImage => image !== null) };
 }
 
@@ -165,7 +166,11 @@ function enqueueNote<T>(noteId: string, operation: () => Promise<T>): Promise<T>
 export async function getAllNotes(): Promise<Note[]> {
 	const db = await getDB();
 	const notes = (await db.getAll(NOTES_STORE)) as Note[];
-	return Promise.all(notes.map((note) => hydrateNoteImages(db, detachNote(note))));
+	const hydrated: Note[] = [];
+	for (const note of notes) {
+		hydrated.push(await hydrateNoteImages(db, detachNote(note)));
+	}
+	return hydrated;
 }
 
 export function putNote(note: Note): Promise<void> {
@@ -202,7 +207,9 @@ export async function deleteLabel(id: string): Promise<void> {
 }
 
 export async function bulkPutNotes(notes: Note[]): Promise<void> {
-	await Promise.all(notes.map((note) => putNote(note)));
+	for (const note of notes) {
+		await putNote(note);
+	}
 }
 
 export async function bulkPutLabels(labels: Label[]): Promise<void> {

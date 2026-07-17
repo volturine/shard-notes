@@ -4,6 +4,7 @@ import { mergeLabels, mergeNotes, type SyncLabel, type SyncNote } from '$lib/ser
 import { mergeTombstones, planDelta, type ManifestRecord, type TombstoneMap } from '$lib/server/syncDelta';
 import { sha256 } from '$lib/syncHash';
 import { readSyncData, writeSyncData } from '$lib/server/syncStore';
+import { canonicalizeSyncNote } from '$lib/server/canonicalImages';
 
 type DeltaUser = { notes: SyncNote[]; labels: SyncLabel[]; tombstones?: TombstoneMap; updatedAt: number };
 type ImageManifest = { id: string; hash: string };
@@ -90,8 +91,11 @@ export const POST: RequestHandler = async ({ request }) => {
 				})
 			};
 		}) as SyncNote[];
+		const canonicalized = hydratedNotes.map(canonicalizeSyncNote);
+		const canonicalNotes = canonicalized.map((result) => result.note);
+		const convertedNotes = canonicalized.filter((result) => result.changed).map((result) => result.note);
 		user.tombstones = mergeTombstones(user.tombstones, incomingTombstones);
-		user.notes = mergeNotes(hydratedNotes, user.notes)
+		user.notes = mergeNotes(canonicalNotes, user.notes)
 			.filter((note) => (Number(user.tombstones?.[note.id]) || 0) < Number(note.updatedAt));
 		user.labels = mergeLabels(body.labels as SyncLabel[], user.labels);
 		user.updatedAt = Date.now();
@@ -100,7 +104,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const noteIds = new Set((body.notes as SyncNote[]).map((note) => note.id));
 		const labelIds = new Set((body.labels as SyncLabel[]).map((label) => label.id));
 		return response({
-			notes: [],
+			notes: convertedNotes,
 			labels: [],
 			ack: {
 				notes: Object.fromEntries(await Promise.all((body.notes as SyncNote[]).map(async (note) => [note.id, await sha256(note)]))),

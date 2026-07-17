@@ -1,25 +1,40 @@
 <script lang="ts">
-	import { notesStore } from '$lib/stores/notes.svelte';
 	import NoteCard from '$lib/components/NoteCard.svelte';
+	import MasonryGrid from '$lib/components/MasonryGrid.svelte';
+	import { notesStore } from '$lib/stores/notes.svelte';
+	import { uiStore } from '$lib/stores/ui.svelte';
 	import { useOpenEditor } from '$lib/editorContext';
 
 	const openEditor = useOpenEditor();
 	const reminders = $derived(notesStore.notesWithReminders);
+
+	const headingClass = $derived('notes-content ' + (uiStore.layout === 'list' ? 'max-w-[720px] mx-auto' : ''));
 </script>
 
-<div class="w-full pt-4 pb-8 sm:mx-auto sm:max-w-[1680px]">
+<div class="pt-4 pb-8">
 	{#if reminders.length === 0}
-		<p class="px-4 text-sm text-[var(--gkc-text-muted)]">No reminders yet. Add one from a note (⏰).</p>
+		<div class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]">
+			<div class="mb-2 text-5xl">⏰</div>
+			<div class="text-sm">No reminders yet. Add one from a note (⏰).</div>
+		</div>
 	{:else}
-		<div class="masonry masonry-grid">
-			{#each reminders as note (note.id)}
-				<div>
-					<NoteCard
-						{note}
-						onOpen={(id) => openEditor(id)}
-					/>
+		<div class={headingClass}>
+			<h2 class="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
+				Reminders
+			</h2>
+		</div>
+		<div class="notes-content">
+			{#if uiStore.layout === 'grid'}
+				<MasonryGrid notes={reminders} onOpen={openEditor} />
+			{:else}
+				<div class="masonry masonry-list">
+					{#each reminders as note (note.id)}
+						<div>
+							<NoteCard {note} onOpen={openEditor} />
+						</div>
+					{/each}
 				</div>
-			{/each}
+			{/if}
 		</div>
 	{/if}
 </div>

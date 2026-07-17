@@ -1,19 +1,29 @@
 import { uid } from './utils';
 import type { NoteImage } from './types';
+import { extractDngJpeg, isDngFile, jpegName } from './dngCanonical';
 
-/** Store full-resolution image as data URL (no compression or size cap). */
+/** Store a browser-displayable full-resolution image with no size cap. */
 export async function fileToNoteImage(file: File): Promise<NoteImage> {
-	const dataUrl = await readFileAsDataUrl(file);
+	let image: Blob = file;
+	let mime = file.type || 'image/jpeg';
+	let name = file.name;
+	if (isDngFile(file)) {
+		const jpeg = Uint8Array.from(extractDngJpeg(await file.arrayBuffer()));
+		image = new Blob([jpeg.buffer], { type: 'image/jpeg' });
+		mime = 'image/jpeg';
+		name = jpegName(file.name);
+	}
+	const dataUrl = await readBlobAsDataUrl(image);
 	return {
 		id: uid(),
-		mime: file.type || 'image/jpeg',
+		mime,
 		dataUrl,
-		name: file.name,
+		name,
 		createdAt: Date.now()
 	};
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
+function readBlobAsDataUrl(file: Blob): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const reader = new FileReader();
 		reader.onload = () => resolve(String(reader.result));

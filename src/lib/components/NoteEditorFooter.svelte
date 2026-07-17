@@ -110,7 +110,7 @@
 {/if}
 
 {#if images.length > 0}
-	<div class="grid max-h-44 grid-cols-3 gap-2 overflow-y-auto overscroll-contain px-3 pb-2 sm:grid-cols-4">
+	<div class="scrollable grid max-h-44 grid-cols-3 gap-2 overflow-y-auto px-3 pb-2 sm:grid-cols-4">
 		{#each images as img, index (img.id)}
 			<div class="relative">
 				<button type="button" class="block aspect-square w-full overflow-hidden rounded-lg touch-manipulation" onclick={() => focusedImageIndex = index} aria-label={`Open ${img.name ?? 'photo'}`}>
