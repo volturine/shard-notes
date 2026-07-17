@@ -86,8 +86,12 @@ export async function fileToNoteImage(file: File): Promise<NoteImage> {
 	};
 }
 
-/** Open / share / download an attachment.
- *  iOS Safari ignores download on data: URLs (flicker only) — use blob URLs + Web Share. */
+export function isInlinePreviewable(att: Pick<NoteImage, 'mime'>): boolean {
+	const mime = att.mime.toLowerCase();
+	return mime === 'application/pdf' || mime.startsWith('text/') || mime === 'application/json' || mime.startsWith('audio/') || mime.startsWith('video/');
+}
+
+/** Open an unsupported attachment through the platform save/share flow. */
 export async function openAttachment(att: NoteImage): Promise<void> {
 	const blob = await dataUrlToBlob(att.dataUrl);
 	const name = att.name?.trim() || 'attachment';
@@ -116,18 +120,7 @@ export async function openAttachment(att: NoteImage): Promise<void> {
 		}
 	};
 
-	// PDF / text / image: open blob URL (works where data: + target=_blank fails)
-	const viewable =
-		mime === 'application/pdf' || mime.startsWith('text/') || isImageMime(mime);
-	if (viewable) {
-		const opened = window.open(url, '_blank', 'noopener,noreferrer');
-		if (opened) {
-			setTimeout(revoke, 120_000);
-			return;
-		}
-	}
-
-	// Desktop download fallback
+	// Browser download fallback for formats without an in-app renderer.
 	const a = document.createElement('a');
 	a.href = url;
 	a.download = name;

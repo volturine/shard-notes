@@ -1,9 +1,11 @@
 <script lang="ts">
+	import AttachmentFullscreen from '$lib/components/AttachmentFullscreen.svelte';
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
 	import type { NoteImage } from '$lib/types';
 	import {
 		fileToNoteImage,
 		isImageAttachment,
+		isInlinePreviewable,
 		fileIconLabel,
 		formatBytes,
 		dataUrlByteLength,
@@ -43,6 +45,7 @@
 
 	let moreOpen = $state(false);
 	let focusedImageIndex = $state<number | null>(null);
+	let focusedAttachment = $state<NoteImage | null>(null);
 	let attachError = $state('');
 
 	const photos = $derived(images.filter(isImageAttachment));
@@ -214,7 +217,10 @@
 				<button
 					type="button"
 					class="min-w-0 flex-1 text-left touch-manipulation"
-					onclick={() => void openAttachment(file)}
+					onclick={() => {
+						if (isInlinePreviewable(file)) focusedAttachment = file;
+						else void openAttachment(file);
+					}}
 					aria-label={`Open ${file.name ?? 'file'}`}
 				>
 					<div class="truncate text-sm text-[var(--gkc-text)]">{file.name || 'Attachment'}</div>
@@ -232,6 +238,7 @@
 {/if}
 
 <PhotoFullscreen images={photos} bind:activeIndex={focusedImageIndex} />
+<AttachmentFullscreen attachment={focusedAttachment} onClose={() => { focusedAttachment = null; }} />
 
 <footer
 	class="relative flex shrink-0 items-center justify-between border-t border-black/5 px-3 py-2 dark:border-white/10"

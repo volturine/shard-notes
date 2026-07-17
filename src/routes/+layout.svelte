@@ -40,16 +40,6 @@
 		});
 	});
 
-	// Auto-sync when the page becomes visible again (tab switch, app resume on iOS).
-	$effect(() => {
-		const handler = () => {
-			if (document.visibilityState === 'visible' && syncStore.isLoggedIn) {
-				notesStore.syncWithCloud();
-			}
-		};
-		document.addEventListener('visibilitychange', handler);
-		return () => document.removeEventListener('visibilitychange', handler);
-	});
 
 	// Service worker: register in production, actively UNREGISTER in dev.
 	// The SW caches assets which conflicts with Vite HMR in dev mode.

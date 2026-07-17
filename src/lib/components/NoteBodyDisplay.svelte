@@ -1,8 +1,9 @@
 <script lang="ts">
-	import type { Note } from '$lib/types';
+	import AttachmentFullscreen from '$lib/components/AttachmentFullscreen.svelte';
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
+	import type { Note, NoteImage } from '$lib/types';
 	import { parseBody, noteAttachments } from '$lib/checklistBody';
-	import { isImageAttachment, fileIconLabel, openAttachment } from '$lib/noteImages';
+	import { isImageAttachment, isInlinePreviewable, fileIconLabel, openAttachment } from '$lib/noteImages';
 	import { notesStore } from '$lib/stores/notes.svelte';
 
 	let { note }: { note: Note } = $props();
@@ -12,6 +13,7 @@
 	const photos = $derived(attachments.filter(isImageAttachment));
 	const files = $derived(attachments.filter((a) => !isImageAttachment(a)));
 	let focusedImageIndex = $state<number | null>(null);
+	let focusedAttachment = $state<NoteImage | null>(null);
 
 	function focusImage(index: number, event: MouseEvent) {
 		event.stopPropagation();
@@ -21,7 +23,9 @@
 	function openFile(event: MouseEvent, id: string) {
 		event.stopPropagation();
 		const file = files.find((f) => f.id === id);
-		if (file) void openAttachment(file);
+		if (!file) return;
+		if (isInlinePreviewable(file)) focusedAttachment = file;
+		else void openAttachment(file);
 	}
 
 	function toggle(lineIndex: number) {
@@ -99,3 +103,4 @@
 {/if}
 
 <PhotoFullscreen images={photos} bind:activeIndex={focusedImageIndex} />
+<AttachmentFullscreen attachment={focusedAttachment} onClose={() => { focusedAttachment = null; }} />
