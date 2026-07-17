@@ -54,13 +54,74 @@
 		moreOpen = !moreOpen;
 	}
 
-	async function onPickFiles(e: Event) {
-		const input = e.target as HTMLInputElement;
-		const picked = Array.from(input.files ?? []);
-		// Reset value so selecting the same file twice in a row fires change.
-		// (Cancel fires no event on any browser — input stays untampered.)
-		input.value = '';
-		if (picked.length === 0) return;
+	/**
+	 * Attach is a normal button. Each press creates a fresh <input type=file>
+	 * inside the same user gesture, opens it, then throws it away.
+	 * Nothing sticky lives in the footer — cancel cannot leave a half-dead control.
+	 */
+	function openAttach() {
+		attachError = '';
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.multiple = true;
+		// Off-screen but not display:none (iOS blocks programmatic open on those).
+		input.setAttribute('aria-hidden', 'true');
+		Object.assign(input.style, {
+			position: 'fixed',
+			left: '0',
+			top: '0',
+			width: '1px',
+			height: '1px',
+			opacity: '0',
+			pointerEvents: 'none',
+			zIndex: '-1'
+		});
+		document.body.appendChild(input);
+
+		let done = false;
+		const openedAt = Date.now();
+		const cleanup = () => {
+			if (done) return;
+			done = true;
+			window.removeEventListener('focus', onFocus);
+			document.removeEventListener('visibilitychange', onVis);
+			queueMicrotask(() => {
+				try {
+					input.remove();
+				} catch {
+					/* ignore */
+				}
+			});
+		};
+
+		// Ignore focus blips while the sheet is still opening.
+		const onFocus = () => {
+			if (Date.now() - openedAt < 400) return;
+			cleanup();
+		};
+		const onVis = () => {
+			if (document.visibilityState !== 'visible') return;
+			if (Date.now() - openedAt < 400) return;
+			cleanup();
+		};
+
+		input.addEventListener(
+			'change',
+			() => {
+				const picked = Array.from(input.files ?? []);
+				cleanup();
+				if (picked.length > 0) void addFiles(picked);
+			},
+			{ once: true }
+		);
+
+		window.addEventListener('focus', onFocus);
+		document.addEventListener('visibilitychange', onVis);
+
+		input.click();
+	}
+
+	async function addFiles(picked: File[]) {
 		attachError = '';
 		try {
 			const added = await Promise.all(picked.map(fileToNoteImage));
@@ -178,21 +239,16 @@
 	onclick={(e) => e.stopPropagation()}
 >
 	<div class="flex items-center gap-1">
-		<!--
-		  The label wraps the input: iOS forwards taps on the label to the
-		  input natively. No JS .click(), no remount, no focus hacks — this
-		  is stateless and always armed.
-		-->
-		<label class="attach-btn" title="Attach" aria-label="Attach">
-			<input
-				type="file"
-				multiple
-				class="sr-only"
-				onchange={onPickFiles}
-			/>
+		<button
+			type="button"
+			class="icon-btn h-10 w-10 p-2 touch-manipulation"
+			title="Attach"
+			onclick={openAttach}
+			aria-label="Attach"
+		>
 			<svg
 				viewBox="0 0 24 24"
-				class="pointer-events-none h-5 w-5 fill-none stroke-current"
+				class="h-5 w-5 fill-none stroke-current"
 				stroke-width="2"
 				stroke-linecap="round"
 				stroke-linejoin="round"
@@ -200,7 +256,7 @@
 			>
 				<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
 			</svg>
-		</label>
+		</button>
 		<button
 			type="button"
 			class="icon-btn h-10 w-10 p-2 touch-manipulation"
