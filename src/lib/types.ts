@@ -31,7 +31,7 @@ export interface Note {
 	title: string;
 	/** Plain text body. Supports `[ ]` / `[x]` checklist lines. */
 	body: string;
-	/** Attachments (photos + files). Wire name stays `images` for sync compat. */
+	/** Attachments (photos + files). `images` is the canonical note field. */
 	images?: NoteImage[];
 	color: NoteColor;
 	pinned: boolean;

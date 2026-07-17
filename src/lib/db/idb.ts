@@ -4,24 +4,12 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import type { Label, Note, NoteImage } from '$lib/types';
 import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
-import { normalizeNote } from '$lib/checklistBody';
 
 const DB_NAME = 'google-keep-clone';
 const DB_VERSION = 3;
 const NOTES_STORE = 'notes';
 const LABELS_STORE = 'labels';
 const IMAGES_STORE = 'note-images';
-
-type ImageRow = {
-	noteId: string;
-	id: string;
-	mime: string;
-	name?: string;
-	createdAt: number;
-	blob?: Blob;
-	/** Legacy image rows from pre-blob builds. */
-	dataUrl?: string;
-};
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 const noteChains = new Map<string, Promise<void>>();
@@ -52,35 +40,24 @@ function getDB(): Promise<IDBPDatabase> {
 /** Plain, validated data only: never hand Svelte proxies to IndexedDB.
  *  Image bytes live in IMAGES_STORE — note rows keep empty dataUrl placeholders. */
 function detachNote(note: Note): Note {
-	const n = normalizeNote(note);
 	return {
-		...n,
-		images: (n.images ?? []).map((image) => ({
-			...image,
-			dataUrl: ''
-		}))
+		...note,
+		labels: [...note.labels],
+		images: (note.images ?? []).map((image) => ({ ...image, dataUrl: '' }))
 	};
 }
 
 function snapshotNote(note: Note): Note {
-	const snapshot = detachNote(note);
-	snapshot.images = (note.images ?? []).map((image) => ({
-		id: String(image.id),
-		mime: String(image.mime || 'image/jpeg'),
-		name: image.name == null ? undefined : String(image.name),
-		createdAt: Number(image.createdAt),
-		dataUrl: String(image.dataUrl ?? '')
-	}));
-	return snapshot;
-}
-
-export function normalizeLabel(value: Label): Label {
-	const createdAt = Number(value.createdAt) || Date.now();
 	return {
-		id: String(value.id),
-		name: String(value.name ?? ''),
-		createdAt,
-		updatedAt: Number(value.updatedAt) || createdAt
+		...note,
+		labels: [...note.labels],
+		images: (note.images ?? []).map((image) => ({
+			id: image.id,
+			mime: image.mime,
+			name: image.name,
+			createdAt: image.createdAt,
+			dataUrl: image.dataUrl
+		}))
 	};
 }
 
@@ -91,17 +68,8 @@ async function imageFromStoredValue(
 ): Promise<NoteImage | null> {
 	if (meta.dataUrl?.length > 20) return meta;
 	const stored = await db.get(IMAGES_STORE, imageKey(noteId, meta.id));
-	if (stored instanceof Blob) {
-		return { ...meta, mime: meta.mime || stored.type, dataUrl: await blobToDataUrl(stored) };
-	}
-	const legacy = stored as ImageRow | undefined;
-	if (legacy?.blob instanceof Blob) {
-		return { ...meta, mime: meta.mime || legacy.mime, dataUrl: await blobToDataUrl(legacy.blob) };
-	}
-	if (legacy && typeof legacy.dataUrl === 'string' && legacy.dataUrl.length > 20) {
-		return { ...meta, mime: meta.mime || legacy.mime, dataUrl: legacy.dataUrl };
-	}
-	return null;
+	if (!(stored instanceof Blob)) return null;
+	return { ...meta, mime: meta.mime || stored.type, dataUrl: await blobToDataUrl(stored) };
 }
 
 async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
@@ -176,12 +144,12 @@ export function deleteNote(id: string): Promise<void> {
 
 export async function getAllLabels(): Promise<Label[]> {
 	const db = await getDB();
-	return ((await db.getAll(LABELS_STORE)) as Label[]).map(normalizeLabel);
+	return (await db.getAll(LABELS_STORE)) as Label[];
 }
 
 export async function putLabel(label: Label): Promise<void> {
 	const db = await getDB();
-	await db.put(LABELS_STORE, normalizeLabel(label));
+	await db.put(LABELS_STORE, label);
 }
 
 export async function deleteLabel(id: string): Promise<void> {
@@ -198,7 +166,7 @@ export async function bulkPutNotes(notes: Note[]): Promise<void> {
 export async function bulkPutLabels(labels: Label[]): Promise<void> {
 	const db = await getDB();
 	const tx = db.transaction(LABELS_STORE, 'readwrite');
-	for (const label of labels) tx.store.put(normalizeLabel(label));
+	for (const label of labels) tx.store.put(label);
 	await tx.done;
 }
 

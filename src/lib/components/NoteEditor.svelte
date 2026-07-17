@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { noteToPlainText, noteImages } from '$lib/checklistBody';
+	import { noteToPlainText, noteAttachments } from '$lib/checklistBody';
 	import type { NoteColor, NoteImage } from '$lib/types';
 	import { KEEP_COLORS, KEEP_DARK_COLORS } from '$lib/types';
 	import ColorPalette from './ColorPalette.svelte';
@@ -38,7 +38,7 @@
 			syncedId = note.id;
 			title = note.title;
 			body = note.body ?? '';
-			images = noteImages(note).map((i) => ({ ...i }));
+			images = noteAttachments(note).map((attachment) => ({ ...attachment }));
 			draftDirty = false;
 		}
 	});

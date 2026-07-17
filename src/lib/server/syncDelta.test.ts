@@ -22,7 +22,7 @@ describe('delta sync planning', () => {
 		expect(mergeTombstones({ gone: 10 }, { gone: 30 })).toEqual({ gone: 30 });
 	});
 
-	it('does not let a legacy full snapshot revive a tombstoned note', () => {
+	it('does not let a stale full snapshot revive a tombstoned note', () => {
 		expect(withoutTombstoned([{ id: 'gone', updatedAt: 10 }], { gone: 30 })).toEqual([]);
 	});
 });

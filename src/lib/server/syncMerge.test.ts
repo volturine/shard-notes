@@ -14,12 +14,9 @@ describe('sync conflict rules', () => {
 		expect(mergeNotes(incoming, stored)).toEqual(stored);
 	});
 
-	it('uses label updatedAt for rename conflicts and supports legacy labels', () => {
+	it('uses label updatedAt for rename conflicts', () => {
 		const stored = [{ id: 'l1', name: 'old name', createdAt: 1, updatedAt: 5 }];
 		const incoming = [{ id: 'l1', name: 'renamed', createdAt: 1, updatedAt: 6 }];
 		expect(mergeLabels(incoming, stored)).toEqual(incoming);
-		expect(mergeLabels([], [{ id: 'legacy', name: 'legacy', createdAt: 3 }])).toEqual([
-			{ id: 'legacy', name: 'legacy', createdAt: 3 }
-		]);
 	});
 });

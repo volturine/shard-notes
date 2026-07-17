@@ -33,7 +33,7 @@ export function mergeNoteLists(primary: Note[], secondary: Note[]): Note[] {
 }
 
 function labelTime(label: Label): number {
-	return Number(label.updatedAt) || Number(label.createdAt) || 0;
+	return label.updatedAt;
 }
 
 export function mergeTwoLabels(primary: Label, secondary: Label): Label {

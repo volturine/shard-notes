@@ -10,12 +10,12 @@ export interface SyncNote {
 export interface SyncLabel {
 	id: string;
 	createdAt: number;
-	updatedAt?: number;
+	updatedAt: number;
 	[key: string]: unknown;
 }
 
 function labelTime(label: SyncLabel): number {
-	return Number(label.updatedAt) || Number(label.createdAt) || 0;
+	return Number(label.updatedAt);
 }
 
 function validRecord(value: unknown): value is { id: string } {

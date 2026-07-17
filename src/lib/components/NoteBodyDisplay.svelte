@@ -1,14 +1,14 @@
 <script lang="ts">
 	import type { Note } from '$lib/types';
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
-	import { parseBody, noteImages } from '$lib/checklistBody';
+	import { parseBody, noteAttachments } from '$lib/checklistBody';
 	import { isImageAttachment, fileIconLabel, openAttachment } from '$lib/noteImages';
 	import { notesStore } from '$lib/stores/notes.svelte';
 
 	let { note }: { note: Note } = $props();
 
 	const segments = $derived(parseBody(note.body ?? ''));
-	const attachments = $derived(noteImages(note));
+	const attachments = $derived(noteAttachments(note));
 	const photos = $derived(attachments.filter(isImageAttachment));
 	const files = $derived(attachments.filter((a) => !isImageAttachment(a)));
 	let focusedImageIndex = $state<number | null>(null);

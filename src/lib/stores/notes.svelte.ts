@@ -10,13 +10,12 @@ import {
 	bulkPutNotes,
 	bulkPutLabels,
 	clearAllNotes,
-	clearAllLabels,
-	normalizeLabel
+	clearAllLabels
 } from '$lib/db/idb';
 import { mergeNoteLists, mergeTwoNotes, mergeLabelLists } from '$lib/noteMerge';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
-import { noteImages, toggleLineAt, normalizeNote } from '$lib/checklistBody';
+import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
 import { readLabelsMirror, readNotesMirror, writeLabelsMirror, writeNotesMirror } from '$lib/noteStorage';
 import { readTombstones, writeTombstones } from '$lib/syncTombstones';
 
@@ -29,7 +28,7 @@ export class NotesStore {
 
 	constructor() {
 		this.notes = readNotesMirror();
-		this.labels = readLabelsMirror().map(normalizeLabel);
+		this.labels = readLabelsMirror();
 		if (this.notes.length > 0) this.loaded = true;
 		if (typeof window !== 'undefined') {
 			window.addEventListener('visibilitychange', () => {
@@ -58,7 +57,7 @@ export class NotesStore {
 		}
 
 		const mirrorNotes = this.notes.length ? this.notes : readNotesMirror();
-		const mirrorLabels = this.labels.length ? this.labels : readLabelsMirror().map(normalizeLabel);
+		const mirrorLabels = this.labels.length ? this.labels : readLabelsMirror();
 		let dbNotes: Note[] = [];
 		let dbLabels: Label[] = [];
 		let deviceReadFailed = false;
@@ -69,12 +68,8 @@ export class NotesStore {
 			this.recordPersistenceError('Could not read IndexedDB', err);
 		}
 
-		const notes = mergeNoteLists(mirrorNotes, dbNotes)
-			.map((n) => normalizeNote(n as Note))
-			.sort((a, b) => b.updatedAt - a.updatedAt);
-		const labels = mergeLabelLists(mirrorLabels, dbLabels)
-			.map(normalizeLabel)
-			.sort((a, b) => a.name.localeCompare(b.name));
+		const notes = mergeNoteLists(mirrorNotes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
+		const labels = mergeLabelLists(mirrorLabels, dbLabels).sort((a, b) => a.name.localeCompare(b.name));
 		const seededFlag = typeof localStorage !== 'undefined' ? localStorage.getItem('gkc-seeded') : null;
 
 		if (notes.length === 0 && labels.length === 0 && !seededFlag) {
@@ -108,12 +103,8 @@ export class NotesStore {
 	private async rehydrateFromIDB() {
 		try {
 			const [dbNotes, dbLabels] = await Promise.all([getAllNotes(), getAllLabels()]);
-			this.notes = mergeNoteLists(this.notes, dbNotes)
-				.map((n) => normalizeNote(n as Note))
-				.sort((a, b) => b.updatedAt - a.updatedAt);
-			this.labels = mergeLabelLists(this.labels, dbLabels)
-				.map(normalizeLabel)
-				.sort((a, b) => a.name.localeCompare(b.name));
+			this.notes = mergeNoteLists(this.notes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
+			this.labels = mergeLabelLists(this.labels, dbLabels).sort((a, b) => a.name.localeCompare(b.name));
 			this.mirrorToLS();
 		} catch (err) {
 			this.recordPersistenceError('Could not rehydrate from IndexedDB', err);
@@ -143,7 +134,7 @@ export class NotesStore {
 		const empty =
 			!n.title.trim() &&
 			!(n.body ?? '').trim() &&
-			!noteImages(n).some((i) => (i.dataUrl?.length ?? 0) > 0);
+			!noteAttachments(n).some((attachment) => attachment.dataUrl.length > 0);
 		if (!empty) return;
 		this.deleteNoteForever(id);
 	}
@@ -319,8 +310,8 @@ export class NotesStore {
 		await clearAllLabels();
 		await bulkPutNotes(data.notes);
 		await bulkPutLabels(data.labels);
-		this.notes = [...data.notes].map((n) => normalizeNote(n as Note)).sort((a, b) => b.updatedAt - a.updatedAt);
-		this.labels = data.labels.map(normalizeLabel).sort((a, b) => a.name.localeCompare(b.name));
+		this.notes = [...data.notes].sort((a, b) => b.updatedAt - a.updatedAt);
+		this.labels = [...data.labels].sort((a, b) => a.name.localeCompare(b.name));
 		this.mirrorToLS();
 	}
 
@@ -328,13 +319,11 @@ export class NotesStore {
 	// image blobs are rehydrated even when a mirror exists.
 	async hardResync() {
 		const mirrorNotes = readNotesMirror();
-		const mirrorLabels = readLabelsMirror().map(normalizeLabel);
+		const mirrorLabels = readLabelsMirror();
 		try {
 			const [dbNotes, dbLabels] = await Promise.all([getAllNotes(), getAllLabels()]);
 			this.notes = mergeNoteLists(mirrorNotes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
-			this.labels = mergeLabelLists(mirrorLabels, dbLabels)
-				.map(normalizeLabel)
-				.sort((a, b) => a.name.localeCompare(b.name));
+			this.labels = mergeLabelLists(mirrorLabels, dbLabels).sort((a, b) => a.name.localeCompare(b.name));
 			this.mirrorToLS();
 		} catch (err) {
 			this.recordPersistenceError('Could not refresh from IndexedDB', err);
@@ -355,7 +344,7 @@ export class NotesStore {
 
 	private mirrorToLS() {
 		writeNotesMirror(this.notes);
-		writeLabelsMirror(this.labels.map(normalizeLabel));
+		writeLabelsMirror(this.labels);
 	}
 
 	private recordPersistenceError(context: string, err: unknown): void {
@@ -433,12 +422,9 @@ export class NotesStore {
 			}
 			const tombstones = result.tombstones ?? {};
 			const cloudNotes = (result.notes as Note[])
-				.map((n) => normalizeNote(n as Note))
 				.filter((note) => (Number(tombstones[note.id]) || 0) < note.updatedAt)
 				.sort((a, b) => b.updatedAt - a.updatedAt);
-			const cloudLabels = ((result.labels ?? []) as Label[])
-				.map(normalizeLabel)
-				.sort((a, b) => a.name.localeCompare(b.name));
+			const cloudLabels = ((result.labels ?? []) as Label[]).sort((a, b) => a.name.localeCompare(b.name));
 
 			await clearAllNotes();
 			await clearAllLabels();
@@ -473,7 +459,7 @@ export class NotesStore {
 	private async doSync(indicate = false): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
 		const localNotes = this.notes.map(cloneNote);
-		const localLabels = this.labels.map(normalizeLabel);
+		const localLabels = [...this.labels];
 		try {
 			const result = await syncStore.sync(localNotes, localLabels, this.deletedNoteIds, indicate);
 			if (!result.success || !result.notes) {
@@ -487,16 +473,13 @@ export class NotesStore {
 			}
 			writeTombstones(this.deletedNoteIds);
 			const remoteNotes = (result.notes as Note[])
-				.map((n) => normalizeNote(n as Note))
 				.filter((note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt);
 			const localById = new Map(this.notes.map((note) => [note.id, note]));
 			const remoteById = new Map(remoteNotes.map((note) => [note.id, note]));
 			const mergedNotes = mergeNoteLists(this.notes, remoteNotes)
-				.map((n) => normalizeNote(n as Note))
 				.filter((note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt)
 				.sort((a, b) => b.updatedAt - a.updatedAt);
 			const mergedLabels = mergeLabelLists(this.labels, (result.labels ?? []) as Label[])
-				.map(normalizeLabel)
 				.sort((a, b) => a.name.localeCompare(b.name));
 			const labelsChanged = JSON.stringify(this.labels) !== JSON.stringify(mergedLabels);
 

@@ -35,54 +35,11 @@ export function noteAttachments(note: Note) {
 	return note.images ?? [];
 }
 
-/** @deprecated use noteAttachments */
-export const noteImages = noteAttachments;
-
 export function noteToPlainText(note: Note): string {
-	const atts = noteAttachments(note);
-	const imgs = atts.filter((a) => a.mime.startsWith('image/')).length;
-	const files = atts.length - imgs;
-	const parts: string[] = [];
-	if (imgs) parts.push(`${imgs} image(s)`);
-	if (files) parts.push(`${files} file(s)`);
+	const attachments = noteAttachments(note);
+	const images = attachments.filter((attachment) => attachment.mime.startsWith('image/')).length;
+	const files = attachments.length - images;
+	const parts = [images && `${images} image(s)`, files && `${files} file(s)`].filter(Boolean);
 	const suffix = parts.length ? `\n[${parts.join(', ')}]` : '';
-	return `${note.title}\n${note.body ?? ''}${suffix}`.trim();
-}
-
-/**
- * Sanitize notes from storage/sync into the current model.
- * Still folds pre-checklist `kind: 'list'` + `items` into body lines once.
- */
-export function normalizeNote(raw: Record<string, unknown> | Note): Note {
-	const n = raw as Note & {
-		items?: { id?: string; text?: string; checked?: boolean }[];
-		kind?: string;
-	};
-	let body = String(n.body ?? '');
-	if (n.kind === 'list' && Array.isArray(n.items) && n.items.length > 0 && !body.trim()) {
-		body = n.items
-			.map((i) => `${i.checked ? '[x]' : '[ ]'} ${i.text ?? ''}`)
-			.join('\n');
-	}
-	return {
-		id: String(n.id),
-		title: String(n.title ?? ''),
-		body,
-		color: n.color ?? 'default',
-		pinned: Boolean(n.pinned),
-		archived: Boolean(n.archived),
-		trashed: Boolean(n.trashed),
-		trashedAt: n.trashedAt ?? null,
-		createdAt: Number(n.createdAt),
-		updatedAt: Number(n.updatedAt),
-		reminder: n.reminder ?? null,
-		labels: [...(n.labels ?? [])],
-		images: (n.images ?? []).map((image) => ({
-			id: String(image.id),
-			mime: String(image.mime || 'image/jpeg'),
-			name: image.name == null ? undefined : String(image.name),
-			createdAt: Number(image.createdAt ?? 0),
-			dataUrl: String(image.dataUrl ?? '')
-		}))
-	};
+	return `${note.title}\n${note.body}${suffix}`.trim();
 }
