@@ -40,8 +40,15 @@
 			body = note.body ?? '';
 			images = noteAttachments(note).map((attachment) => ({ ...attachment }));
 			draftDirty = false;
+			focusBodySignal++;
 		}
 	});
+
+	function focusBodyFromPage(event: MouseEvent) {
+		const target = event.target;
+		if (target instanceof Element && target.closest('button, input, textarea, select, a, [contenteditable="true"]')) return;
+		focusBodySignal++;
+	}
 
 	$effect(() => {
 		if (!isOpen) {
@@ -133,7 +140,7 @@
 			style="background-color: {bgColor(note.color)};"
 			role="dialog"
 			aria-modal="true"
-			onclick={(e) => e.stopPropagation()}
+			onclick={focusBodyFromPage}
 		>
 			<!-- Header -->
 			<header

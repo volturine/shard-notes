@@ -3,6 +3,8 @@
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
 	import type { Note, NoteImage } from '$lib/types';
 	import { parseBody, noteAttachments } from '$lib/checklistBody';
+	import { extractHttpUrls } from '$lib/linkPreview';
+	import LinkPreview from './LinkPreview.svelte';
 	import { isImageAttachment, isInlinePreviewable, fileIconLabel, openAttachment } from '$lib/noteImages';
 	import { notesStore } from '$lib/stores/notes.svelte';
 
@@ -12,6 +14,7 @@
 	const attachments = $derived(noteAttachments(note));
 	const photos = $derived(attachments.filter(isImageAttachment));
 	const files = $derived(attachments.filter((a) => !isImageAttachment(a)));
+	const links = $derived(extractHttpUrls(note.body ?? '').slice(0, 3));
 	let focusedImageIndex = $state<number | null>(null);
 	let focusedAttachment = $state<NoteImage | null>(null);
 
@@ -61,6 +64,14 @@
 		{/if}
 	{/each}
 </div>
+
+{#if links.length > 0}
+	<div class="mt-2 flex flex-col gap-2">
+		{#each links as url (url)}
+			<LinkPreview {url} />
+		{/each}
+	</div>
+{/if}
 
 {#if photos.length > 0}
 	<div class="mt-2 flex flex-wrap gap-1.5">
