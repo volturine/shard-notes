@@ -138,15 +138,6 @@ export async function openAttachment(att: NoteImage): Promise<void> {
 	setTimeout(revoke, 60_000);
 }
 
-/** Non-image accept list so iOS prefers the Files picker (not Photo Library). */
-export const FILE_ATTACH_ACCEPT =
-	'.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.json,.zip,.rtf,.pages,.numbers,.key,.mp3,.wav,.m4a,.mp4,.mov,.webm,' +
-	'application/pdf,application/zip,application/json,application/msword,' +
-	'application/vnd.openxmlformats-officedocument.wordprocessingml.document,' +
-	'application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,' +
-	'application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,' +
-	'text/plain,text/markdown,text/csv,text/*,audio/*,video/*';
-
 function readBlobAsDataUrl(file: Blob): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const reader = new FileReader();

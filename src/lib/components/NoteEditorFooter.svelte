@@ -7,8 +7,7 @@
 		fileIconLabel,
 		formatBytes,
 		dataUrlByteLength,
-		openAttachment,
-		FILE_ATTACH_ACCEPT
+		openAttachment
 	} from '$lib/noteImages';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { sha256 } from '$lib/syncHash';
@@ -45,8 +44,6 @@
 	let moreOpen = $state(false);
 	let focusedImageIndex = $state<number | null>(null);
 	let attachError = $state('');
-	let photoInput: HTMLInputElement | null = $state(null);
-	let fileInput: HTMLInputElement | null = $state(null);
 
 	const photos = $derived(images.filter(isImageAttachment));
 	const files = $derived(images.filter((a) => !isImageAttachment(a)));
@@ -60,6 +57,8 @@
 	async function onPickFiles(e: Event) {
 		const input = e.target as HTMLInputElement;
 		const picked = Array.from(input.files ?? []);
+		// Reset value so selecting the same file twice in a row fires change.
+		// (Cancel fires no event on any browser — input stays untampered.)
 		input.value = '';
 		if (picked.length === 0) return;
 		attachError = '';
@@ -163,7 +162,7 @@
 				</button>
 				<button
 					type="button"
-					class="shrink-0 rounded-full px-1.5 py-0.5 text-xs text-[var(--gkc-text-muted)] touch-manipulation hover:bg-black/10 dark:hover:bg-white/10"
+					class="shrink-0 rounded-full px-1.5 py-0.5 text-xs text-[var(--gkc-text-muted)] touch-manipulation"
 					onclick={() => removeAttachment(file.id)}
 					aria-label="Remove file"
 				>✕</button>
@@ -179,15 +178,36 @@
 	onclick={(e) => e.stopPropagation()}
 >
 	<div class="flex items-center gap-1">
-		<input bind:this={photoInput} type="file" accept="image/*" multiple class="hidden" onchange={onPickFiles} />
-		<input bind:this={fileInput} type="file" accept={FILE_ATTACH_ACCEPT} multiple class="hidden" onchange={onPickFiles} />
-		<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Add photo" onclick={() => photoInput?.click()} aria-label="Add photo">
-			<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
-		</button>
-		<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Attach file" onclick={() => fileInput?.click()} aria-label="Attach file">
-			<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-		</button>
-		<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Tags" onclick={openTags} aria-label="Tags">
+		<!--
+		  The label wraps the input: iOS forwards taps on the label to the
+		  input natively. No JS .click(), no remount, no focus hacks — this
+		  is stateless and always armed.
+		-->
+		<label class="attach-btn" title="Attach" aria-label="Attach">
+			<input
+				type="file"
+				multiple
+				class="sr-only"
+				onchange={onPickFiles}
+			/>
+			<svg
+				viewBox="0 0 24 24"
+				class="pointer-events-none h-5 w-5 fill-none stroke-current"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				aria-hidden="true"
+			>
+				<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+			</svg>
+		</label>
+		<button
+			type="button"
+			class="icon-btn h-10 w-10 p-2 touch-manipulation"
+			title="Tags"
+			onclick={openTags}
+			aria-label="Tags"
+		>
 			<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M20 12l-8 8-9-9V4h7l10 10zM5 6.5C5 5.7 5.7 5 6.5 5S8 5.7 8 6.5 7.3 8 6.5 8 5 7.3 5 6.5z"/></svg>
 		</button>
 	</div>
