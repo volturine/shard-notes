@@ -21,7 +21,7 @@
 	function openFile(event: MouseEvent, id: string) {
 		event.stopPropagation();
 		const file = files.find((f) => f.id === id);
-		if (file) openAttachment(file);
+		if (file) void openAttachment(file);
 	}
 
 	function toggle(lineIndex: number) {

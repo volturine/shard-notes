@@ -1,6 +1,7 @@
 import { uid } from './utils';
 import type { NoteImage } from './types';
 import { extractDngJpeg, isDngFile, jpegName } from './dngCanonical';
+import { dataUrlToBlob } from './imageBlob';
 
 /** Browser-renderable image (preview / fullscreen). Excludes raw DNG before convert. */
 export function isImageMime(mime: string): boolean {
@@ -85,17 +86,66 @@ export async function fileToNoteImage(file: File): Promise<NoteImage> {
 	};
 }
 
-/** Open / download an attachment (works for images and files). */
-export function openAttachment(att: NoteImage): void {
+/** Open / share / download an attachment.
+ *  iOS Safari ignores download on data: URLs (flicker only) — use blob URLs + Web Share. */
+export async function openAttachment(att: NoteImage): Promise<void> {
+	const blob = await dataUrlToBlob(att.dataUrl);
+	const name = att.name?.trim() || 'attachment';
+	const mime = att.mime || blob.type || 'application/octet-stream';
+	const file = new File([blob], name, { type: mime });
+
+	// iOS / Android: share sheet includes "Save to Files"
+	if (typeof navigator !== 'undefined' && typeof navigator.canShare === 'function') {
+		try {
+			if (navigator.canShare({ files: [file] })) {
+				await navigator.share({ files: [file], title: name });
+				return;
+			}
+		} catch (err) {
+			// User cancelled share sheet — stop; don't fall through to a broken open.
+			if (err instanceof Error && err.name === 'AbortError') return;
+		}
+	}
+
+	const url = URL.createObjectURL(blob);
+	const revoke = () => {
+		try {
+			URL.revokeObjectURL(url);
+		} catch {
+			/* ignore */
+		}
+	};
+
+	// PDF / text / image: open blob URL (works where data: + target=_blank fails)
+	const viewable =
+		mime === 'application/pdf' || mime.startsWith('text/') || isImageMime(mime);
+	if (viewable) {
+		const opened = window.open(url, '_blank', 'noopener,noreferrer');
+		if (opened) {
+			setTimeout(revoke, 120_000);
+			return;
+		}
+	}
+
+	// Desktop download fallback
 	const a = document.createElement('a');
-	a.href = att.dataUrl;
-	a.download = att.name || 'attachment';
-	a.target = '_blank';
+	a.href = url;
+	a.download = name;
 	a.rel = 'noopener';
 	document.body.appendChild(a);
 	a.click();
 	document.body.removeChild(a);
+	setTimeout(revoke, 60_000);
 }
+
+/** Non-image accept list so iOS prefers the Files picker (not Photo Library). */
+export const FILE_ATTACH_ACCEPT =
+	'.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.json,.zip,.rtf,.pages,.numbers,.key,.mp3,.wav,.m4a,.mp4,.mov,.webm,' +
+	'application/pdf,application/zip,application/json,application/msword,' +
+	'application/vnd.openxmlformats-officedocument.wordprocessingml.document,' +
+	'application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,' +
+	'application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,' +
+	'text/plain,text/markdown,text/csv,text/*,audio/*,video/*';
 
 function readBlobAsDataUrl(file: Blob): Promise<string> {
 	return new Promise((resolve, reject) => {

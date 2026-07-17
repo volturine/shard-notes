@@ -7,7 +7,8 @@
 		fileIconLabel,
 		formatBytes,
 		dataUrlByteLength,
-		openAttachment
+		openAttachment,
+		FILE_ATTACH_ACCEPT
 	} from '$lib/noteImages';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { sha256 } from '$lib/syncHash';
@@ -154,7 +155,7 @@
 				<button
 					type="button"
 					class="min-w-0 flex-1 text-left touch-manipulation"
-					onclick={() => openAttachment(file)}
+					onclick={() => void openAttachment(file)}
 					aria-label={`Open ${file.name ?? 'file'}`}
 				>
 					<div class="truncate text-sm text-[var(--gkc-text)]">{file.name || 'Attachment'}</div>
@@ -179,7 +180,7 @@
 >
 	<div class="flex items-center gap-1">
 		<input bind:this={photoInput} type="file" accept="image/*" multiple class="hidden" onchange={onPickFiles} />
-		<input bind:this={fileInput} type="file" multiple class="hidden" onchange={onPickFiles} />
+		<input bind:this={fileInput} type="file" accept={FILE_ATTACH_ACCEPT} multiple class="hidden" onchange={onPickFiles} />
 		<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Add photo" onclick={() => photoInput?.click()} aria-label="Add photo">
 			<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
 		</button>
