@@ -364,7 +364,7 @@
 						class="mt-0 flex w-full items-center gap-2 rounded-lg py-0.5 pl-5 text-left text-[13px] text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--gkc-text)] dark:hover:bg-white/10"
 						onclick={() => addSubtask(visibleRows[0]?.index ?? -1)}
 					>
-						<span class="grid h-3.5 w-3.5 shrink-0 place-items-center rounded border border-current" aria-hidden="true">
+						<span class="grid h-4 w-4 shrink-0 place-items-center rounded border border-current" aria-hidden="true">
 							<svg viewBox="0 0 24 24" class="h-2.5 w-2.5 fill-none stroke-current" stroke-width="2" stroke-linecap="round">
 								<path d="M12 5v14M5 12h14" />
 							</svg>
