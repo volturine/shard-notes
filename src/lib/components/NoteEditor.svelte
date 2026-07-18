@@ -23,6 +23,8 @@
 	const note = $derived(noteId ? notesStore.notes.find((n) => n.id === noteId) : null);
 	const isOpen = $derived(noteId !== null && note !== null);
 
+	let taskFocusLine = $state<number | null>(null);
+
 	let title = $state('');
 	let body = $state('');
 	let linkPreviews = $state<LinkPreviewMetadata[]>([]);
@@ -46,6 +48,7 @@
 			linkPreviews = note.linkPreviews?.map((preview) => ({ ...preview })) ?? [];
 			rememberLinkPreviews(linkPreviews);
 			images = noteAttachments(note).map((attachment) => ({ ...attachment }));
+			taskFocusLine = null;
 			draftDirty = false;
 			focusBodySignal++;
 		}
@@ -65,6 +68,20 @@
 			labelOpen = false;
 		}
 	});
+
+	function focusTask(line: number) {
+		taskFocusLine = line;
+		focusBodySignal++;
+	}
+
+	function handleBack() {
+		if (taskFocusLine !== null) {
+			taskFocusLine = null;
+			focusBodySignal++;
+			return;
+		}
+		void close();
+	}
 
 	function closePopups() {
 		paletteOpen = false;
@@ -194,8 +211,8 @@
 				<button
 					type="button"
 					class="icon-btn h-10 w-10 p-2"
-					title="Back"
-					onclick={close}
+					title={taskFocusLine !== null ? 'Back to note' : 'Back'}
+					onclick={handleBack}
 					aria-label="Back"
 				>
 					<svg viewBox="0 0 24 24" class="h-6 w-6 fill-none stroke-current" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -241,23 +258,26 @@
 			<div class="scrollable min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 pt-4 pb-3">
 				<input
 					type="text"
-					placeholder="Title"
-					bind:value={title}
-					oninput={scheduleCommit}
-					onkeydown={(e) => {
-						if (e.key === 'Enter') {
-							e.preventDefault();
-							focusBodySignal++;
-						}
-					}}
-					class="mb-3 block w-full bg-transparent text-xl font-medium text-[var(--gkc-text)] placeholder:text-[var(--gkc-text-muted)] outline-none"
+						placeholder="Title"
+						bind:value={title}
+						oninput={scheduleCommit}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') {
+								e.preventDefault();
+								focusBodySignal++;
+							}
+						}}
+						class="mb-3 block w-full bg-transparent text-xl font-medium text-[var(--gkc-text)] placeholder:text-[var(--gkc-text-muted)] outline-none"
 				/>
 
 				<BodyEditor
 					bind:body
 					oninput={scheduleCommit}
-					placeholder="Take a note… type [ ] for a checklist"
+					placeholder="Take a note… type [ ] for a checklist, Tab for sub-task"
 					focusSignal={focusBodySignal}
+					focusLine={taskFocusLine}
+					onFocusTask={focusTask}
+					onExitTaskFocus={handleBack}
 				/>
 
 				{#if links.length > 0}

@@ -42,21 +42,25 @@
 <div class="text-sm text-[var(--gkc-text)]">
 	{#each segments as seg (seg.lineIndex)}
 		{#if seg.type === 'check'}
-			<div class="flex items-start gap-2 py-0.5">
+			<div
+				class="flex items-start gap-2 py-0.5"
+				data-check-line={seg.lineIndex}
+				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
+			>
 				<button
 					type="button"
 					data-checklist-toggle
-					class="mt-0.5 h-4 w-4 shrink-0 rounded border border-black/40 dark:border-white/40 flex items-center justify-center text-[10px]"
+					class="mt-0.5 shrink-0 rounded border border-black/40 dark:border-white/40 flex items-center justify-center text-[10px] {seg.indent > 0 ? 'h-3.5 w-3.5' : 'h-4 w-4'}"
 					style={seg.checked ? 'background: rgba(0,0,0,0.1)' : ''}
 					onclick={(e) => {
 						e.stopPropagation();
 						toggle(seg.lineIndex);
 					}}
-					aria-label="Toggle item"
+					aria-label={seg.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
 				>
 					{#if seg.checked}✓{/if}
 				</button>
-				<span class="flex-1 break-words {seg.checked ? 'line-through opacity-50' : ''}">
+				<span class="flex-1 break-words {seg.checked ? 'line-through opacity-50' : ''} {seg.indent > 0 ? 'text-[13px]' : ''}">
 					{seg.text || '\u00a0'}
 				</span>
 			</div>

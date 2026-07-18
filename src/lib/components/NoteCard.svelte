@@ -87,7 +87,7 @@
 		</div>
 
 		{#if labelsForNote.length}
-			<div class="flex shrink-0 flex-wrap gap-1 border-t border-black/[0.04] px-3 pb-3 pt-2 dark:border-white/[0.06]">
+			<div class="flex shrink-0 flex-wrap gap-1 px-3 pb-3 pt-2">
 				{#each labelsForNote as label (label.id)}
 					<span
 						class="rounded px-1.5 py-0.5 text-[10px] font-medium bg-black/5 text-[var(--gkc-text-muted)] dark:bg-white/10"
