@@ -21,7 +21,7 @@ export interface SyncProgress {
 	totalBytes: number | null;
 }
 
-type SyncResult = { success: boolean; notes?: Note[]; labels?: Label[]; tombstones?: Record<string, number>; data?: Record<string, unknown>; error?: string };
+type SyncResult = { success: boolean; notes?: Note[]; labels?: Label[]; tombstones?: Record<string, number>; labelTombstones?: Record<string, number>; data?: Record<string, unknown>; error?: string };
 
 class SyncStore {
 	account = $state<SyncAccount | null>(null);
@@ -135,7 +135,7 @@ class SyncStore {
 					resolve({ success: false, error: typeof data.error === 'string' ? data.error : `Sync request failed (${xhr.status})` });
 					return;
 				}
-				resolve({ success: true, notes: data.notes as Note[], labels: data.labels as Label[], tombstones: data.tombstones as Record<string, number> | undefined, data });
+				resolve({ success: true, notes: data.notes as Note[], labels: data.labels as Label[], tombstones: data.tombstones as Record<string, number> | undefined, labelTombstones: data.labelTombstones as Record<string, number> | undefined, data });
 			};
 			xhr.onerror = () => resolve({ success: false, error: 'Sync network error' });
 			xhr.ontimeout = () => resolve({ success: false, error: 'Sync timed out after 60 seconds' });
@@ -145,7 +145,7 @@ class SyncStore {
 	}
 
 	/** Two-phase delta sync: manifests first, then only changed records/photos. */
-	async sync(notes: Note[], labels: Label[], tombstones: Record<string, number> = {}, indicate = false): Promise<SyncResult> {
+	async sync(notes: Note[], labels: Label[], tombstones: Record<string, number> = {}, labelTombstones: Record<string, number> = {}, indicate = false): Promise<SyncResult> {
 		if (!this.account) return { success: false, error: 'Not logged in' };
 		if (indicate) this.onSyncStart?.();
 		try {
@@ -160,7 +160,8 @@ class SyncStore {
 				manifest: {
 					notes: notes.map(({ id, updatedAt }) => ({ id, updatedAt, hash: noteHashes[id], images: imageManifests[id] })),
 					labels: labels.map(({ id, updatedAt }) => ({ id, updatedAt, hash: labelHashes[id] })),
-					tombstones
+					tombstones,
+					labelTombstones
 				}
 			});
 			const plan = await this.sendSyncRequest('/api/sync/delta', manifestPayload, new Blob([manifestPayload]).size, indicate);
@@ -169,6 +170,7 @@ class SyncStore {
 			const uploadNoteIds = new Set((plan.data.uploadNoteIds as string[] | undefined) ?? []);
 			const uploadLabelIds = new Set((plan.data.uploadLabelIds as string[] | undefined) ?? []);
 			const uploadTombstones = (plan.data.uploadTombstones as Record<string, number> | undefined) ?? {};
+			const uploadLabelTombstones = (plan.data.uploadLabelTombstones as Record<string, number> | undefined) ?? {};
 			const knownImageIds = (plan.data.knownImageIds as Record<string, string[]> | undefined) ?? {};
 			const uploadNotes = notes.filter((note) => uploadNoteIds.has(note.id)).map((note) => ({
 				...note,
@@ -176,10 +178,10 @@ class SyncStore {
 			}));
 			const uploadLabels = labels.filter((label) => uploadLabelIds.has(label.id));
 			let canonical: SyncResult = { success: true, notes: [], labels: [], tombstones: {} };
-			if (uploadNotes.length || uploadLabels.length || Object.keys(uploadTombstones).length) {
+			if (uploadNotes.length || uploadLabels.length || Object.keys(uploadTombstones).length || Object.keys(uploadLabelTombstones).length) {
 				const uploadNoteHashes = Object.fromEntries(await Promise.all(uploadNotes.map(async (note) => [note.id, await sha256(note)])));
 				const uploadLabelHashes = Object.fromEntries(await Promise.all(uploadLabels.map(async (label) => [label.id, await sha256(label)])));
-				const uploadPayload = JSON.stringify({ syncCode: this.account.syncCode, notes: uploadNotes, labels: uploadLabels, tombstones: uploadTombstones, hashes: { notes: Object.fromEntries(uploadNotes.map((note) => [note.id, uploadNoteHashes[note.id]])), labels: Object.fromEntries(uploadLabels.map((label) => [label.id, uploadLabelHashes[label.id]])) } });
+				const uploadPayload = JSON.stringify({ syncCode: this.account.syncCode, notes: uploadNotes, labels: uploadLabels, tombstones: uploadTombstones, labelTombstones: uploadLabelTombstones, hashes: { notes: Object.fromEntries(uploadNotes.map((note) => [note.id, uploadNoteHashes[note.id]])), labels: Object.fromEntries(uploadLabels.map((label) => [label.id, uploadLabelHashes[label.id]])) } });
 				canonical = await this.sendSyncRequest('/api/sync/delta', uploadPayload, new Blob([uploadPayload]).size, indicate);
 				if (!canonical.success) return this.fail(canonical);
 				const ack = canonical.data?.ack as { notes?: Record<string, string>; labels?: Record<string, string> } | undefined;
@@ -194,7 +196,8 @@ class SyncStore {
 				success: true,
 				notes: [...(plan.notes ?? []), ...(canonical.notes ?? [])],
 				labels: [...(plan.labels ?? []), ...(canonical.labels ?? [])],
-				tombstones: { ...(plan.tombstones ?? {}), ...(canonical.tombstones ?? {}) }
+				tombstones: { ...(plan.tombstones ?? {}), ...(canonical.tombstones ?? {}) },
+				labelTombstones: { ...(plan.labelTombstones ?? {}), ...(canonical.labelTombstones ?? {}) }
 			};
 		} catch (err) {
 			return this.fail({ success: false, error: err instanceof Error ? `Sync network error: ${err.message}` : 'Sync network error' });

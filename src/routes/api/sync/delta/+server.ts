@@ -6,9 +6,9 @@ import { sha256 } from '$lib/syncHash';
 import { readSyncData, writeSyncData } from '$lib/server/syncStore';
 import { canonicalizeSyncNote } from '$lib/server/canonicalImages';
 
-type DeltaUser = { notes: SyncNote[]; labels: SyncLabel[]; tombstones?: TombstoneMap; updatedAt: number };
+type DeltaUser = { notes: SyncNote[]; labels: SyncLabel[]; tombstones?: TombstoneMap; labelTombstones?: TombstoneMap; updatedAt: number };
 type ImageManifest = { id: string; hash: string };
-type Manifest = { notes: (ManifestRecord & { images?: ImageManifest[] })[]; labels: ManifestRecord[]; tombstones?: TombstoneMap };
+type Manifest = { notes: (ManifestRecord & { images?: ImageManifest[] })[]; labels: ManifestRecord[]; tombstones?: TombstoneMap; labelTombstones?: TombstoneMap };
 
 function validManifest(value: unknown): value is Manifest {
 	return !!value && typeof value === 'object'
@@ -26,7 +26,7 @@ function response(data: unknown): Response {
  * Phase 2: send only those requested full records; server merges atomically and returns canonicals.
  */
 export const POST: RequestHandler = async ({ request }) => {
-	let body: { syncCode?: unknown; manifest?: unknown; notes?: unknown; labels?: unknown; tombstones?: unknown };
+	let body: { syncCode?: unknown; manifest?: unknown; notes?: unknown; labels?: unknown; tombstones?: unknown; labelTombstones?: unknown };
 	try { body = await request.json(); } catch { return json({ error: 'Invalid JSON body' }, { status: 400 }); }
 	if (typeof body.syncCode !== 'string' || !body.syncCode) return json({ error: 'Sync code is required' }, { status: 400 });
 
@@ -35,12 +35,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		const user = Object.values(data).find((entry) => entry.syncCode === body.syncCode) as (DeltaUser & { syncCode: string }) | undefined;
 		if (!user) return json({ error: 'Invalid sync code' }, { status: 404 });
 		user.tombstones ??= {};
+		user.labelTombstones ??= {};
 
 		if (validManifest(body.manifest)) {
 			const serverNotes = await Promise.all(user.notes.map(async (note) => ({ ...note, hash: await sha256(note) })));
 			const serverLabels = await Promise.all(user.labels.map(async (label) => ({ ...label, updatedAt: Number(label.updatedAt) || Number(label.createdAt), hash: await sha256(label) })));
 			const notePlan = planDelta(body.manifest.notes, serverNotes, body.manifest.tombstones, user.tombstones);
-			const labelPlan = planDelta(body.manifest.labels, serverLabels);
+			const labelPlan = planDelta(body.manifest.labels, serverLabels, body.manifest.labelTombstones, user.labelTombstones);
 			const stripHash = <T extends { hash?: string }>(record: T) => {
 				const { hash: _hash, ...plain } = record;
 				return plain;
@@ -58,10 +59,12 @@ export const POST: RequestHandler = async ({ request }) => {
 			return response({
 				notes: notePlan.download.map(stripHash),
 				labels: labelPlan.download.map(stripHash),
+				labelTombstones: labelPlan.downloadTombstones,
 				tombstones: notePlan.downloadTombstones,
 				uploadNoteIds: notePlan.uploadIds,
 				knownImageIds,
 				uploadLabelIds: labelPlan.uploadIds,
+				uploadLabelTombstones: labelPlan.uploadTombstones,
 				uploadTombstones: notePlan.uploadTombstones
 			});
 		}
@@ -70,6 +73,9 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ error: 'Delta upload requires notes, labels, and tombstones' }, { status: 400 });
 		}
 		const incomingTombstones = body.tombstones as TombstoneMap;
+		const incomingLabelTombstones = body.labelTombstones && typeof body.labelTombstones === 'object'
+			? body.labelTombstones as TombstoneMap
+			: {};
 		const declaredHashes = (body as { hashes?: { notes?: Record<string, string>; labels?: Record<string, string> } }).hashes;
 		for (const note of body.notes as SyncNote[]) {
 			if (!declaredHashes?.notes?.[note.id] || declaredHashes.notes[note.id] !== await sha256(note)) return json({ error: `Note hash verification failed for ${note.id}` }, { status: 409 });
@@ -95,9 +101,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		const canonicalNotes = canonicalized.map((result) => result.note);
 		const convertedNotes = canonicalized.filter((result) => result.changed).map((result) => result.note);
 		user.tombstones = mergeTombstones(user.tombstones, incomingTombstones);
+		user.labelTombstones = mergeTombstones(user.labelTombstones, incomingLabelTombstones);
 		user.notes = mergeNotes(canonicalNotes, user.notes)
 			.filter((note) => (Number(user.tombstones?.[note.id]) || 0) < Number(note.updatedAt));
-		user.labels = mergeLabels(body.labels as SyncLabel[], user.labels);
+		user.labels = mergeLabels(body.labels as SyncLabel[], user.labels)
+			.filter((label) => (Number(user.labelTombstones?.[label.id]) || 0) < Number(label.updatedAt));
 		user.updatedAt = Date.now();
 		writeSyncData(data);
 
@@ -110,7 +118,8 @@ export const POST: RequestHandler = async ({ request }) => {
 				notes: Object.fromEntries(await Promise.all((body.notes as SyncNote[]).map(async (note) => [note.id, await sha256(note)]))),
 				labels: Object.fromEntries(await Promise.all((body.labels as SyncLabel[]).map(async (label) => [label.id, await sha256(label)])))
 			},
-			tombstones: Object.fromEntries(Object.entries(user.tombstones).filter(([id]) => noteIds.has(id) || id in incomingTombstones))
+			tombstones: Object.fromEntries(Object.entries(user.tombstones).filter(([id]) => noteIds.has(id) || id in incomingTombstones)),
+			labelTombstones: Object.fromEntries(Object.entries(user.labelTombstones).filter(([id]) => labelIds.has(id) || id in incomingLabelTombstones))
 		});
 	} catch (err) {
 		console.error('[sync] delta failed:', err);

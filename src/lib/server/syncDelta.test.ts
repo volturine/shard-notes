@@ -25,4 +25,11 @@ describe('delta sync planning', () => {
 	it('does not let a stale full snapshot revive a tombstoned note', () => {
 		expect(withoutTombstoned([{ id: 'gone', updatedAt: 10 }], { gone: 30 })).toEqual([]);
 	});
+
+	it('sends a deleted label tombstone instead of re-uploading the stale label', () => {
+		const plan = planDelta([], [{ id: 'label', updatedAt: 10, name: 'work' }], { label: 20 });
+		expect(plan.download).toEqual([]);
+		expect(plan.uploadIds).toEqual([]);
+		expect(plan.uploadTombstones).toEqual({ label: 20 });
+	});
 });

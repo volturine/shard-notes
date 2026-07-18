@@ -2,14 +2,16 @@
 // separately as a blob-free fast-boot mirror by noteStorage.ts.
 
 import { openDB, type IDBPDatabase } from 'idb';
+import type { LinkPreview } from '$lib/linkPreview';
 import type { Label, Note, NoteImage } from '$lib/types';
 import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
 
 const DB_NAME = 'google-keep-clone';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const NOTES_STORE = 'notes';
 const LABELS_STORE = 'labels';
 const IMAGES_STORE = 'note-images';
+const LINK_PREVIEWS_STORE = 'link-previews';
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 const noteChains = new Map<string, Promise<void>>();
@@ -31,34 +33,74 @@ function getDB(): Promise<IDBPDatabase> {
 				if (!db.objectStoreNames.contains(IMAGES_STORE)) {
 					db.createObjectStore(IMAGES_STORE);
 				}
+				if (!db.objectStoreNames.contains(LINK_PREVIEWS_STORE)) {
+					db.createObjectStore(LINK_PREVIEWS_STORE, { keyPath: 'url' });
+				}
 			}
 		});
 	}
 	return dbPromise;
 }
 
+/** Plain clone of an attachment — never hand Svelte proxies to IndexedDB. */
+function plainImage(image: NoteImage): NoteImage {
+	return {
+		id: String(image.id),
+		mime: String(image.mime || 'application/octet-stream'),
+		dataUrl: typeof image.dataUrl === 'string' ? image.dataUrl : '',
+		createdAt: Number(image.createdAt) || 0,
+		...(image.name != null && image.name !== '' ? { name: String(image.name) } : {})
+	};
+}
+
+function plainLinkPreview(preview: LinkPreview): LinkPreview {
+	return {
+		url: String(preview.url),
+		hostname: String(preview.hostname),
+		title: String(preview.title),
+		...(preview.description ? { description: String(preview.description) } : {}),
+		...(preview.image ? { image: String(preview.image) } : {}),
+		...(preview.icon ? { icon: String(preview.icon) } : {})
+	};
+}
+
+/**
+ * Fully plain Note for IDB. Spreading `$state` notes leaves nested proxies
+ * (labels/images/linkPreviews) which throw DataCloneError on put.
+ */
+function plainNote(note: Note): Note {
+	const images = (note.images ?? []).map(plainImage);
+	const linkPreviews = (note.linkPreviews ?? []).map(plainLinkPreview);
+	return {
+		id: String(note.id),
+		title: String(note.title ?? ''),
+		body: String(note.body ?? ''),
+		color: note.color,
+		pinned: Boolean(note.pinned),
+		archived: Boolean(note.archived),
+		trashed: Boolean(note.trashed),
+		trashedAt: note.trashedAt == null ? null : Number(note.trashedAt),
+		createdAt: Number(note.createdAt) || 0,
+		updatedAt: Number(note.updatedAt) || 0,
+		reminder: note.reminder == null ? null : Number(note.reminder),
+		labels: Array.from(note.labels ?? [], (id) => String(id)),
+		images,
+		...(linkPreviews.length ? { linkPreviews } : {})
+	};
+}
+
 /** Plain, validated data only: never hand Svelte proxies to IndexedDB.
  *  Image bytes live in IMAGES_STORE — note rows keep empty dataUrl placeholders. */
 function detachNote(note: Note): Note {
+	const plain = plainNote(note);
 	return {
-		...note,
-		labels: [...note.labels],
-		images: (note.images ?? []).map((image) => ({ ...image, dataUrl: '' }))
+		...plain,
+		images: (plain.images ?? []).map((image) => ({ ...image, dataUrl: '' }))
 	};
 }
 
 function snapshotNote(note: Note): Note {
-	return {
-		...note,
-		labels: [...note.labels],
-		images: (note.images ?? []).map((image) => ({
-			id: image.id,
-			mime: image.mime,
-			name: image.name,
-			createdAt: image.createdAt,
-			dataUrl: image.dataUrl
-		}))
-	};
+	return plainNote(note);
 }
 
 async function imageFromStoredValue(
@@ -66,10 +108,10 @@ async function imageFromStoredValue(
 	noteId: string,
 	meta: NoteImage
 ): Promise<NoteImage | null> {
-	if (meta.dataUrl?.length > 20) return meta;
+	if (meta.dataUrl?.length > 20) return plainImage(meta);
 	const stored = await db.get(IMAGES_STORE, imageKey(noteId, meta.id));
 	if (!(stored instanceof Blob)) return null;
-	return { ...meta, mime: meta.mime || stored.type, dataUrl: await blobToDataUrl(stored) };
+	return plainImage({ ...meta, mime: meta.mime || stored.type, dataUrl: await blobToDataUrl(stored) });
 }
 
 async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
@@ -77,7 +119,7 @@ async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
 	for (const meta of note.images ?? []) {
 		images.push(await imageFromStoredValue(db, note.id, meta));
 	}
-	return { ...note, images: images.filter((image): image is NoteImage => image !== null) };
+	return { ...plainNote(note), images: images.filter((image): image is NoteImage => image !== null) };
 }
 
 async function prepareImageBlobs(note: Note): Promise<Array<{ key: string; blob: Blob }>> {
@@ -119,7 +161,7 @@ export async function getAllNotes(): Promise<Note[]> {
 	const notes = (await db.getAll(NOTES_STORE)) as Note[];
 	const hydrated: Note[] = [];
 	for (const note of notes) {
-		hydrated.push(await hydrateNoteImages(db, detachNote(note)));
+		hydrated.push(await hydrateNoteImages(db, note));
 	}
 	return hydrated;
 }
@@ -149,7 +191,12 @@ export async function getAllLabels(): Promise<Label[]> {
 
 export async function putLabel(label: Label): Promise<void> {
 	const db = await getDB();
-	await db.put(LABELS_STORE, label);
+	await db.put(LABELS_STORE, {
+		id: String(label.id),
+		name: String(label.name),
+		createdAt: Number(label.createdAt) || 0,
+		updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
+	});
 }
 
 export async function deleteLabel(id: string): Promise<void> {
@@ -166,7 +213,14 @@ export async function bulkPutNotes(notes: Note[]): Promise<void> {
 export async function bulkPutLabels(labels: Label[]): Promise<void> {
 	const db = await getDB();
 	const tx = db.transaction(LABELS_STORE, 'readwrite');
-	for (const label of labels) tx.store.put(label);
+	for (const label of labels) {
+		tx.store.put({
+			id: String(label.id),
+			name: String(label.name),
+			createdAt: Number(label.createdAt) || 0,
+			updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
+		});
+	}
 	await tx.done;
 }
 
@@ -181,4 +235,47 @@ export async function clearAllNotes(): Promise<void> {
 export async function clearAllLabels(): Promise<void> {
 	const db = await getDB();
 	await db.clear(LABELS_STORE);
+}
+
+/** Shared link-preview cache: one fetch per URL, reused across notes. */
+export async function getCachedLinkPreview(url: string): Promise<LinkPreview | undefined> {
+	const db = await getDB();
+	const row = await db.get(LINK_PREVIEWS_STORE, url);
+	if (!row || typeof row !== 'object') return undefined;
+	const { url: cachedUrl, hostname, title, description, image, icon } = row as LinkPreview;
+	if (typeof cachedUrl !== 'string' || typeof hostname !== 'string' || typeof title !== 'string') return undefined;
+	return plainLinkPreview({
+		url: cachedUrl,
+		hostname,
+		title,
+		...(typeof description === 'string' ? { description } : {}),
+		...(typeof image === 'string' ? { image } : {}),
+		...(typeof icon === 'string' ? { icon } : {})
+	});
+}
+
+export async function putCachedLinkPreview(preview: LinkPreview): Promise<void> {
+	const db = await getDB();
+	await db.put(LINK_PREVIEWS_STORE, {
+		...plainLinkPreview(preview),
+		fetchedAt: Date.now()
+	});
+}
+
+export async function getAllCachedLinkPreviews(): Promise<LinkPreview[]> {
+	const db = await getDB();
+	const rows = await db.getAll(LINK_PREVIEWS_STORE);
+	return rows.flatMap((row) => {
+		if (!row || typeof row !== 'object') return [];
+		const { url, hostname, title, description, image, icon } = row as LinkPreview;
+		if (typeof url !== 'string' || typeof hostname !== 'string' || typeof title !== 'string') return [];
+		return [plainLinkPreview({
+			url,
+			hostname,
+			title,
+			...(typeof description === 'string' ? { description } : {}),
+			...(typeof image === 'string' ? { image } : {}),
+			...(typeof icon === 'string' ? { icon } : {})
+		})];
+	});
 }

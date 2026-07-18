@@ -8,8 +8,24 @@ type MirroredNote = Omit<Note, 'images'> & { hasImages?: boolean };
 
 /** Note shape safe for localStorage: attachment bytes never enter the mirror. */
 export function noteForLocalStorage(note: Note): MirroredNote {
-	const { images, ...rest } = note;
-	return images?.length ? { ...rest, hasImages: true } : rest;
+	const { images: _images, linkPreviews, ...rest } = note;
+	const base = {
+		...rest,
+		labels: [...(note.labels ?? [])],
+		...(linkPreviews?.length
+			? {
+					linkPreviews: linkPreviews.map((preview) => ({
+						url: preview.url,
+						hostname: preview.hostname,
+						title: preview.title,
+						...(preview.description ? { description: preview.description } : {}),
+						...(preview.image ? { image: preview.image } : {}),
+						...(preview.icon ? { icon: preview.icon } : {})
+					}))
+				}
+			: {})
+	};
+	return note.images?.length ? { ...base, hasImages: true } : base;
 }
 
 function parseArray<T>(raw: string | null): T[] {

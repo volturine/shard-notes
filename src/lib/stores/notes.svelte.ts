@@ -17,7 +17,8 @@ import { syncStore } from '$lib/stores/sync.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
 import { readLabelsMirror, readNotesMirror, writeLabelsMirror, writeNotesMirror } from '$lib/noteStorage';
-import { readTombstones, writeTombstones } from '$lib/syncTombstones';
+import { readLabelTombstones, readTombstones, writeLabelTombstones, writeTombstones } from '$lib/syncTombstones';
+import { rememberLinkPreviews } from '$lib/linkPreview';
 
 export class NotesStore {
 	notes = $state<Note[]>([]);
@@ -25,6 +26,7 @@ export class NotesStore {
 	loaded = $state(false);
 	lastPersistError = $state<string | null>(null);
 	deletedNoteIds = $state<Record<string, number>>(readTombstones());
+	deletedLabelIds = $state<Record<string, number>>(readLabelTombstones());
 
 	constructor() {
 		this.notes = readNotesMirror();
@@ -97,7 +99,14 @@ export class NotesStore {
 			}
 		}
 		this.purgeOldTrash();
+		this.seedLinkPreviewCache(this.notes);
 		this.loaded = true;
+	}
+
+	private seedLinkPreviewCache(notes: Note[]) {
+		for (const note of notes) {
+			if (note.linkPreviews?.length) rememberLinkPreviews(note.linkPreviews);
+		}
 	}
 
 	private async rehydrateFromIDB() {
@@ -105,6 +114,7 @@ export class NotesStore {
 			const [dbNotes, dbLabels] = await Promise.all([getAllNotes(), getAllLabels()]);
 			this.notes = mergeNoteLists(this.notes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
 			this.labels = mergeLabelLists(this.labels, dbLabels).sort((a, b) => a.name.localeCompare(b.name));
+			this.seedLinkPreviewCache(this.notes);
 			this.mirrorToLS();
 		} catch (err) {
 			this.recordPersistenceError('Could not rehydrate from IndexedDB', err);
@@ -115,7 +125,19 @@ export class NotesStore {
 		const idx = this.notes.findIndex((x) => x.id === id);
 		if (idx === -1) return;
 		if (Object.keys(patch).length > 0) {
-			this.notes[idx] = { ...this.notes[idx], ...patch, updatedAt: Date.now() };
+			const current = this.notes[idx];
+			this.notes[idx] = {
+				...current,
+				...patch,
+				updatedAt: Date.now(),
+				labels: patch.labels ? [...patch.labels] : current.labels,
+				images: patch.images
+					? patch.images.map((image) => ({ ...image }))
+					: current.images,
+				linkPreviews: patch.linkPreviews
+					? patch.linkPreviews.map((preview) => ({ ...preview }))
+					: current.linkPreviews
+			};
 		}
 		const note = this.notes[idx];
 		this.mirrorToLS();
@@ -167,8 +189,11 @@ export class NotesStore {
 			createdAt: now,
 			updatedAt: now,
 			reminder: partial.reminder ?? null,
-			labels: partial.labels ?? [],
-			images: partial.images ?? []
+			labels: [...(partial.labels ?? [])],
+			images: (partial.images ?? []).map((image) => ({ ...image })),
+			...(partial.linkPreviews?.length
+				? { linkPreviews: partial.linkPreviews.map((preview) => ({ ...preview })) }
+				: {})
 		};
 		this.notes = [note, ...this.notes];
 		this.persist(note.id);
@@ -178,7 +203,20 @@ export class NotesStore {
 	updateNote(id: string, patch: Partial<Note>): void {
 		const idx = this.notes.findIndex((n) => n.id === id);
 		if (idx === -1) return;
-		this.notes[idx] = { ...this.notes[idx], ...patch, updatedAt: Date.now() };
+		const current = this.notes[idx];
+		const next: Note = {
+			...current,
+			...patch,
+			updatedAt: Date.now(),
+			labels: patch.labels ? [...patch.labels] : current.labels,
+			images: patch.images
+				? patch.images.map((image) => ({ ...image }))
+				: current.images,
+			linkPreviews: patch.linkPreviews
+				? patch.linkPreviews.map((preview) => ({ ...preview }))
+				: current.linkPreviews
+		};
+		this.notes[idx] = next;
 		this.persist(id);
 	}
 
@@ -255,6 +293,7 @@ export class NotesStore {
 		this.labels = [...this.labels, label].sort((a, b) => a.name.localeCompare(b.name));
 		this.mirrorToLS();
 		putLabel(label).catch((err) => this.recordPersistenceError('Could not save label', err));
+		this.markLabelsDirty();
 		return label;
 	}
 
@@ -268,16 +307,23 @@ export class NotesStore {
 		this.labels.sort((a, b) => a.name.localeCompare(b.name));
 		this.mirrorToLS();
 		putLabel(renamed).catch((err) => this.recordPersistenceError('Could not rename label', err));
+		this.markLabelsDirty();
 	}
 
 	removeLabel(id: string): void {
-		this.labels = this.labels.filter((l) => l.id !== id);
-		this.notes = this.notes.map((n) =>
-			n.labels.includes(id) ? { ...n, labels: n.labels.filter((l) => l !== id) } : n
-		);
+		if (!this.labels.some((label) => label.id === id)) return;
+		const deletedAt = Date.now();
+		this.labels = this.labels.filter((label) => label.id !== id);
+		const affectedNoteIds: string[] = [];
+		this.notes = this.notes.map((note) => {
+			if (!note.labels.includes(id)) return note;
+			affectedNoteIds.push(note.id);
+			return { ...note, labels: note.labels.filter((labelId) => labelId !== id), updatedAt: deletedAt };
+		});
 		this.mirrorToLS();
 		deleteLabel(id).catch((err) => this.recordPersistenceError('Could not delete label', err));
-		this.notes.forEach((n) => this.persist(n.id));
+		for (const noteId of affectedNoteIds) this.persist(noteId);
+		this.markLabelsDeleted([id], deletedAt);
 	}
 
 	notesForLabel(id: string): Note[] {
@@ -338,6 +384,18 @@ export class NotesStore {
 		const deletedAt = Date.now();
 		for (const id of ids) this.deletedNoteIds[id] = deletedAt;
 		writeTombstones(this.deletedNoteIds);
+		this.dirty = true;
+		this.scheduleSyncPush();
+	}
+
+	private markLabelsDeleted(ids: string[], deletedAt = Date.now()): void {
+		if (ids.length === 0) return;
+		for (const id of ids) this.deletedLabelIds[id] = deletedAt;
+		writeLabelTombstones(this.deletedLabelIds);
+		this.markLabelsDirty();
+	}
+
+	private markLabelsDirty(): void {
 		this.dirty = true;
 		this.scheduleSyncPush();
 	}
@@ -415,16 +473,19 @@ export class NotesStore {
 	async replaceWithCloudManual(): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
 		try {
-			const result = await syncStore.sync([], [], {}, true);
+			const result = await syncStore.sync([], [], {}, {}, true);
 			if (!result.success || !result.notes) {
 				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
 				return false;
 			}
 			const tombstones = result.tombstones ?? {};
+			const labelTombstones = result.labelTombstones ?? {};
 			const cloudNotes = (result.notes as Note[])
 				.filter((note) => (Number(tombstones[note.id]) || 0) < note.updatedAt)
 				.sort((a, b) => b.updatedAt - a.updatedAt);
-			const cloudLabels = ((result.labels ?? []) as Label[]).sort((a, b) => a.name.localeCompare(b.name));
+			const cloudLabels = ((result.labels ?? []) as Label[])
+				.filter((label) => (Number(labelTombstones[label.id]) || 0) < label.updatedAt)
+				.sort((a, b) => a.name.localeCompare(b.name));
 
 			await clearAllNotes();
 			await clearAllLabels();
@@ -432,8 +493,11 @@ export class NotesStore {
 			await bulkPutLabels(cloudLabels);
 			this.notes = cloudNotes;
 			this.labels = cloudLabels;
+			this.seedLinkPreviewCache(cloudNotes);
 			this.deletedNoteIds = { ...tombstones };
+			this.deletedLabelIds = { ...labelTombstones };
 			writeTombstones(this.deletedNoteIds);
+			writeLabelTombstones(this.deletedLabelIds);
 			this.mirrorToLS();
 			this.dirty = false;
 			this.lastPersistError = null;
@@ -461,7 +525,7 @@ export class NotesStore {
 		const localNotes = this.notes.map(cloneNote);
 		const localLabels = [...this.labels];
 		try {
-			const result = await syncStore.sync(localNotes, localLabels, this.deletedNoteIds, indicate);
+			const result = await syncStore.sync(localNotes, localLabels, this.deletedNoteIds, this.deletedLabelIds, indicate);
 			if (!result.success || !result.notes) {
 				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
 				return false;
@@ -472,6 +536,11 @@ export class NotesStore {
 				if ((Number(deletedAt) || 0) > (this.deletedNoteIds[id] || 0)) this.deletedNoteIds[id] = Number(deletedAt);
 			}
 			writeTombstones(this.deletedNoteIds);
+			const incomingLabelTombstones = result.labelTombstones ?? {};
+			for (const [id, deletedAt] of Object.entries(incomingLabelTombstones)) {
+				if ((Number(deletedAt) || 0) > (this.deletedLabelIds[id] || 0)) this.deletedLabelIds[id] = Number(deletedAt);
+			}
+			writeLabelTombstones(this.deletedLabelIds);
 			const remoteNotes = (result.notes as Note[])
 				.filter((note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt);
 			const localById = new Map(this.notes.map((note) => [note.id, note]));
@@ -479,7 +548,10 @@ export class NotesStore {
 			const mergedNotes = mergeNoteLists(this.notes, remoteNotes)
 				.filter((note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt)
 				.sort((a, b) => b.updatedAt - a.updatedAt);
-			const mergedLabels = mergeLabelLists(this.labels, (result.labels ?? []) as Label[])
+			const remoteLabels = ((result.labels ?? []) as Label[])
+				.filter((label) => (this.deletedLabelIds[label.id] || 0) < label.updatedAt);
+			const mergedLabels = mergeLabelLists(this.labels, remoteLabels)
+				.filter((label) => (this.deletedLabelIds[label.id] || 0) < label.updatedAt)
 				.sort((a, b) => a.name.localeCompare(b.name));
 			const labelsChanged = JSON.stringify(this.labels) !== JSON.stringify(mergedLabels);
 
@@ -500,12 +572,17 @@ export class NotesStore {
 			const tombstonedLocalIds = this.notes
 				.filter((note) => (this.deletedNoteIds[note.id] || 0) >= note.updatedAt)
 				.map((note) => note.id);
+			const tombstonedLocalLabelIds = this.labels
+				.filter((label) => (this.deletedLabelIds[label.id] || 0) >= label.updatedAt)
+				.map((label) => label.id);
 			this.notes = mergedNotes;
 			this.labels = mergedLabels;
+			this.seedLinkPreviewCache(mergedNotes);
 			this.mirrorToLS();
 			for (const note of notesToPersist) await putNote(note);
 			await Promise.all([
 				...tombstonedLocalIds.map((id) => deleteNote(id)),
+				...tombstonedLocalLabelIds.map((id) => deleteLabel(id)),
 				...(labelsChanged ? [bulkPutLabels(mergedLabels)] : [])
 			]);
 			this.lastPersistError = null;

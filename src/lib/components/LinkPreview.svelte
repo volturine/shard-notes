@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { LinkPreview } from '$lib/linkPreview';
+	import { fetchLinkPreview, isUsableLinkPreview, type LinkPreview } from '$lib/linkPreview';
 
-	let { url }: { url: string } = $props();
+	let { url, metadata = undefined }: { url: string; metadata?: LinkPreview } = $props();
 
 	let preview = $state<LinkPreview | null>(null);
 	let loading = $state(true);
@@ -17,13 +17,13 @@
 
 	$effect(() => {
 		const controller = new AbortController();
-		preview = null;
-		loading = true;
+		const saved = isUsableLinkPreview(metadata) ? metadata : null;
+		preview = saved;
+		loading = !saved;
+		if (saved) return () => controller.abort();
 
-		void fetch(`/api/link-preview?url=${encodeURIComponent(url)}`, { signal: controller.signal })
-			.then(async (response) => response.ok ? response.json() as Promise<LinkPreview> : null)
+		void fetchLinkPreview(url, controller.signal)
 			.then((data) => { preview = data; })
-			.catch(() => { preview = null; })
 			.finally(() => { loading = false; });
 
 		return () => controller.abort();
@@ -45,11 +45,20 @@
 >
 	{#if preview?.image}
 		<img class="h-20 w-24 shrink-0 object-cover" src={preview.image} alt="" />
+	{:else if preview?.icon}
+		<div class="grid h-20 w-20 shrink-0 place-items-center bg-black/[0.06] dark:bg-white/[0.08]">
+			<img class="h-9 w-9 rounded-lg object-contain" src={preview.icon} alt="" />
+		</div>
 	{:else}
 		<div class="grid h-20 w-20 shrink-0 place-items-center bg-black/[0.06] text-xl dark:bg-white/[0.08]" aria-hidden="true">↗</div>
 	{/if}
 	<div class="min-w-0 flex-1 px-3 py-2">
-		<div class="truncate text-sm font-medium text-[var(--gkc-text)]">{preview?.title ?? fallback.title}</div>
+		<div class="flex min-w-0 items-center gap-1.5">
+			{#if preview?.icon}
+				<img class="h-3.5 w-3.5 shrink-0 rounded-sm object-contain" src={preview.icon} alt="" />
+			{/if}
+			<div class="truncate text-sm font-medium text-[var(--gkc-text)]">{preview?.title ?? fallback.title}</div>
+		</div>
 		{#if preview?.description}
 			<div class="mt-0.5 line-clamp-2 text-xs leading-snug text-[var(--gkc-text-muted)]">{preview.description}</div>
 		{:else if loading}

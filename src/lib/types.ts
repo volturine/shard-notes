@@ -1,3 +1,5 @@
+import type { LinkPreview } from './linkPreview';
+
 // Core domain types for Shard notes.
 
 export type NoteColor =
@@ -33,6 +35,8 @@ export interface Note {
 	body: string;
 	/** Attachments (photos + files). `images` is the canonical note field. */
 	images?: NoteImage[];
+	/** Saved link metadata so previews remain rich after a note is saved or synced. */
+	linkPreviews?: LinkPreview[];
 	color: NoteColor;
 	pinned: boolean;
 	archived: boolean;

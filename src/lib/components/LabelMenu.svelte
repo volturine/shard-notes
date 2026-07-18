@@ -37,14 +37,19 @@
 			bind:value={newName}
 			placeholder="Create new label…"
 			onkeydown={(e) => e.key === 'Enter' && createAndAssign()}
-			class="w-full rounded-full border border-[var(--gkc-border)] bg-[var(--gkc-bg)] px-3 py-2 text-sm text-[var(--gkc-text)] focus:outline-none focus:ring-2 focus:ring-blue-500"
+			class="w-full rounded-full border border-[var(--gkc-border)] bg-[var(--gkc-bg)] px-3 py-2 text-sm text-[var(--gkc-text)] focus:outline-none focus:ring-2 focus:ring-black/10 dark:focus:ring-white/15"
 		/>
 		<button
 			type="button"
 			onclick={createAndAssign}
-			class="shrink-0 rounded-full bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+			disabled={!newName.trim()}
+			class="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[var(--gkc-border)] text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--gkc-text)] disabled:opacity-40 dark:hover:bg-white/10"
+			aria-label="Create label"
+			title="Create label"
 		>
-			+
+			<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
+				<path d="M12 5v14M5 12h14" />
+			</svg>
 		</button>
 	</div>
 

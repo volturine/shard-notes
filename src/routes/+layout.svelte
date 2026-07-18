@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '../app.css';
+	import { page } from '$app/state';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { syncStore } from '$lib/stores/sync.svelte';
@@ -91,9 +92,15 @@
 	}
 
 	function startNewNote() {
+		const routeLabelId = page.params.label;
+		const labels =
+			typeof routeLabelId === 'string' && notesStore.labels.some((label) => label.id === routeLabelId)
+				? [routeLabelId]
+				: [];
 		const n = notesStore.createNote({
 			title: '',
-			body: ''
+			body: '',
+			labels
 		});
 		editingId = n.id;
 	}
@@ -121,7 +128,7 @@
 	function handleSidebarClick(e: MouseEvent) {
 		const target = e.target as HTMLElement;
 		if (target.closest('input, textarea, select')) return;
-		if (target.closest('[data-labels-edit]')) return;
+		if (target.closest('[data-sidebar-stay-open]')) return;
 		if (target.closest('button')) {
 			if (isMobile) {
 				setTimeout(() => { uiStore.sidebarOpen = false; }, 100);

@@ -30,12 +30,40 @@ export function daysSinceTrashed(trashedAt: number | null): number {
 
 export const TRASH_PURGE_DAYS = 7;
 
-/** Deep-clone a note for editing without mutating the stored one. */
+/** Deep-clone a note for editing without mutating the stored one. Plain objects only. */
 export function cloneNote(note: import('$lib/types').Note): import('$lib/types').Note {
 	return {
-		...note,
+		id: note.id,
+		title: note.title,
+		body: note.body,
+		color: note.color,
+		pinned: note.pinned,
+		archived: note.archived,
+		trashed: note.trashed,
+		trashedAt: note.trashedAt,
+		createdAt: note.createdAt,
+		updatedAt: note.updatedAt,
+		reminder: note.reminder,
 		labels: [...note.labels],
-		images: note.images ? note.images.map((i) => ({ ...i })) : []
+		images: (note.images ?? []).map((image) => ({
+			id: image.id,
+			mime: image.mime,
+			dataUrl: image.dataUrl,
+			createdAt: image.createdAt,
+			...(image.name != null ? { name: image.name } : {})
+		})),
+		...(note.linkPreviews?.length
+			? {
+					linkPreviews: note.linkPreviews.map((preview) => ({
+						url: preview.url,
+						hostname: preview.hostname,
+						title: preview.title,
+						...(preview.description ? { description: preview.description } : {}),
+						...(preview.image ? { image: preview.image } : {}),
+						...(preview.icon ? { icon: preview.icon } : {})
+					}))
+				}
+			: {})
 	};
 }
 

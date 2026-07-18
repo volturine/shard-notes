@@ -9,6 +9,8 @@
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
+	import LinkPreview from './LinkPreview.svelte';
+	import { extractHttpUrls, fetchLinkPreview, isUsableLinkPreview, rememberLinkPreviews, type LinkPreview as LinkPreviewMetadata } from '$lib/linkPreview';
 
 	let {
 		noteId = $bindable(),
@@ -23,6 +25,9 @@
 
 	let title = $state('');
 	let body = $state('');
+	let linkPreviews = $state<LinkPreviewMetadata[]>([]);
+	const links = $derived(extractHttpUrls(body));
+	const previewsByUrl = $derived(new Map(linkPreviews.map((preview) => [preview.url, preview])));
 	let paletteOpen = $state(false);
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
@@ -38,6 +43,8 @@
 			syncedId = note.id;
 			title = note.title;
 			body = note.body ?? '';
+			linkPreviews = note.linkPreviews?.map((preview) => ({ ...preview })) ?? [];
+			rememberLinkPreviews(linkPreviews);
 			images = noteAttachments(note).map((attachment) => ({ ...attachment }));
 			draftDirty = false;
 			focusBodySignal++;
@@ -69,6 +76,36 @@
 		return uiStore.effectiveDark ? KEEP_DARK_COLORS[c] : KEEP_COLORS[c];
 	}
 
+	function previewsForUrls(urls: string[]): LinkPreviewMetadata[] {
+		return urls.flatMap((url) => {
+			const preview = previewsByUrl.get(url);
+			return isUsableLinkPreview(preview) ? [preview] : [];
+		});
+	}
+
+	async function resolveLinkPreviews(noteId: string, urls: string[]): Promise<void> {
+		const known = new Map(
+			linkPreviews.filter(isUsableLinkPreview).map((preview) => [preview.url, preview])
+		);
+		const missing = urls.filter((url) => !known.has(url));
+		if (missing.length === 0) return;
+
+		const fetched = await Promise.all(missing.map(async (url) => {
+			const preview = await fetchLinkPreview(url);
+			return preview ? { ...preview, url } : null;
+		}));
+		if (!note || note.id !== noteId || extractHttpUrls(body).join('\n') !== urls.join('\n')) return;
+
+		for (const preview of fetched) if (preview) known.set(preview.url, preview);
+		const resolved = urls.flatMap((url) => {
+			const preview = known.get(url);
+			return preview ? [preview] : [];
+		});
+		rememberLinkPreviews(resolved);
+		linkPreviews = resolved;
+		commit({ linkPreviews: resolved });
+	}
+
 	function commit(patch: Record<string, unknown>) {
 		if (!note) return;
 		notesStore.updateNote(note.id, patch);
@@ -80,7 +117,11 @@
 		if (timer) clearTimeout(timer);
 		timer = setTimeout(() => {
 			if (!note) return;
-			commit({ title, body, images });
+			const urls = extractHttpUrls(body);
+			const savedPreviews = previewsForUrls(urls);
+			linkPreviews = savedPreviews;
+			commit({ title, body, images, linkPreviews: savedPreviews });
+			void resolveLinkPreviews(note.id, urls);
 		}, 250);
 	}
 
@@ -93,12 +134,16 @@
 	async function close() {
 		if (timer) clearTimeout(timer);
 		if (note && draftDirty) {
-			commit({ title, body, images });
+			const urls = extractHttpUrls(body);
+			const savedPreviews = previewsForUrls(urls);
+			linkPreviews = savedPreviews;
+			commit({ title, body, images, linkPreviews: savedPreviews });
 			try {
-				await notesStore.flushNote(note.id, { title, body, images });
+				await notesStore.flushNote(note.id, { title, body, images, linkPreviews: savedPreviews });
 			} catch (err) {
 				console.error('[NoteEditor] flush failed:', err);
 			}
+			void resolveLinkPreviews(note.id, urls);
 		}
 		if (note) notesStore.discardIfEmpty(note.id);
 		onClose();
@@ -214,6 +259,14 @@
 					placeholder="Take a note… type [ ] for a checklist"
 					focusSignal={focusBodySignal}
 				/>
+
+				{#if links.length > 0}
+					<div class="mt-3 flex flex-col gap-2" aria-label="Link previews">
+						{#each links as url (url)}
+							<LinkPreview {url} metadata={previewsByUrl.get(url)} />
+						{/each}
+					</div>
+				{/if}
 			</div>
 
 			<NoteEditorFooter

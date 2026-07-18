@@ -4,7 +4,10 @@ import { isIP } from 'node:net';
 import type { RequestHandler } from './$types';
 import type { LinkPreview } from '$lib/linkPreview';
 
-const MAX_HTML_BYTES = 300_000;
+/** Stop reading once we have the document head (OG/Twitter/title/icons live here). No size cap. */
+const HEAD_END_RE = /<\/head>/i;
+const BROWSER_UA =
+	'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 const MAX_REDIRECTS = 3;
 
 function isBlockedIp(address: string): boolean {
@@ -37,30 +40,35 @@ async function safeHttpUrl(value: string): Promise<URL> {
 	return url;
 }
 
-async function readLimitedBody(response: Response): Promise<string> {
+/** Read HTML until </head>, then cancel the rest. No byte cap — meta is always in the head. */
+async function readHtmlHead(response: Response): Promise<string> {
 	if (!response.body) return '';
 	const reader = response.body.getReader();
-	const chunks: Uint8Array[] = [];
-	let total = 0;
+	const decoder = new TextDecoder();
+	let html = '';
 	try {
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
-			total += value.byteLength;
-			if (total > MAX_HTML_BYTES) throw new Error('Preview page is too large');
-			chunks.push(value);
+			html += decoder.decode(value, { stream: true });
+			if (HEAD_END_RE.test(html)) {
+				try {
+					await reader.cancel();
+				} catch {
+					// ignore cancel races
+				}
+				break;
+			}
 		}
+		html += decoder.decode();
 	} finally {
-		reader.releaseLock();
+		try {
+			reader.releaseLock();
+		} catch {
+			// already released after cancel
+		}
 	}
-
-	const bytes = new Uint8Array(total);
-	let offset = 0;
-	for (const chunk of chunks) {
-		bytes.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
-	return new TextDecoder().decode(bytes);
+	return html;
 }
 
 function decodeHtml(value: string): string {
@@ -105,12 +113,70 @@ function absoluteHttpUrl(value: string | null, base: URL): string | undefined {
 	}
 }
 
-function parsePreview(html: string, pageUrl: URL): LinkPreview {
+function iconScore(rel: string, sizes: string | null): number {
+	const r = rel.toLowerCase();
+	let score = 0;
+	if (r.includes('apple-touch-icon')) score += 40;
+	else if (r === 'icon' || r.includes('shortcut')) score += 30;
+	else if (r.includes('alternate') && r.includes('icon')) score += 20;
+	else if (r.includes('fluid-icon')) score += 10;
+	else if (r.includes('mask-icon')) score += 5;
+	else if (r.includes('icon')) score += 15;
+
+	if (sizes) {
+		const dims = sizes.toLowerCase().match(/(\d+)x(\d+)/g) ?? [];
+		const maxDim = dims.reduce((best, pair) => {
+			const [w, h] = pair.split('x').map(Number);
+			return Math.max(best, w || 0, h || 0);
+		}, 0);
+		score += Math.min(maxDim, 256) / 8;
+	}
+	return score;
+}
+
+function pageIcon(html: string, pageUrl: URL): string | undefined {
+	const candidates = (html.match(/<link\b[^>]*>/gi) ?? [])
+		.map((tag) => ({
+			rel: attribute(tag, 'rel') ?? '',
+			href: attribute(tag, 'href'),
+			sizes: attribute(tag, 'sizes'),
+			type: attribute(tag, 'type')?.toLowerCase() ?? ''
+		}))
+		.filter(({ rel, href, type }) => !!href && rel.toLowerCase().includes('icon') && !type.includes('xml'));
+
+	candidates.sort((a, b) => iconScore(b.rel, b.sizes) - iconScore(a.rel, a.sizes));
+	const best = candidates[0]?.href;
+	return absoluteHttpUrl(best ?? '/favicon.ico', pageUrl);
+}
+
+function parsePreview(html: string, pageUrl: URL, originalUrl: string): LinkPreview {
 	const titleTag = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1];
-	const title = cleanText(metaContent(html, 'og:title') ?? metaContent(html, 'twitter:title') ?? titleTag, 160) ?? pageUrl.hostname;
-	const description = cleanText(metaContent(html, 'og:description') ?? metaContent(html, 'twitter:description') ?? metaContent(html, 'description'), 240);
+	const title = cleanText(
+		metaContent(html, 'og:title') ?? metaContent(html, 'twitter:title') ?? titleTag,
+		160
+	);
+	// Hostname-as-title is a failed unfurl — do not return/persist it.
+	if (!title || title.toLowerCase() === pageUrl.hostname.toLowerCase() || title.toLowerCase() === pageUrl.hostname.replace(/^www\./, '').toLowerCase()) {
+		throw new Error('Page has no usable title');
+	}
+
+	const description = cleanText(
+		metaContent(html, 'og:description') ?? metaContent(html, 'twitter:description') ?? metaContent(html, 'description'),
+		240
+	);
 	const image = absoluteHttpUrl(metaContent(html, 'og:image') ?? metaContent(html, 'twitter:image'), pageUrl);
-	return { url: pageUrl.href, hostname: pageUrl.hostname.replace(/^www\./, ''), title, ...(description ? { description } : {}), ...(image ? { image } : {}) };
+	const icon = pageIcon(html, pageUrl);
+	const hostname = pageUrl.hostname.replace(/^www\./, '');
+
+	return {
+		// Keep the URL the note extracted so client Map keys stay stable across redirects.
+		url: originalUrl,
+		hostname,
+		title,
+		...(description ? { description } : {}),
+		...(image ? { image } : {}),
+		...(icon ? { icon } : {})
+	};
 }
 
 export const GET: RequestHandler = async ({ url, fetch }) => {
@@ -118,12 +184,17 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
 	if (!supplied || supplied.length > 2_048) return json({ error: 'A valid link is required' }, { status: 400 });
 
 	try {
+		const originalUrl = new URL(supplied).href;
 		let pageUrl = await safeHttpUrl(supplied);
 		for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
 			const response = await fetch(pageUrl, {
 				redirect: 'manual',
-				signal: AbortSignal.timeout(8_000),
-				headers: { accept: 'text/html,application/xhtml+xml', 'user-agent': 'Shard link preview' }
+				signal: AbortSignal.timeout(10_000),
+				headers: {
+					accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
+					'accept-language': 'en-US,en;q=0.9',
+					'user-agent': BROWSER_UA
+				}
 			});
 			if (response.status >= 300 && response.status < 400) {
 				const location = response.headers.get('location');
@@ -132,10 +203,14 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
 				continue;
 			}
 			if (!response.ok) throw new Error(`The page returned ${response.status}`);
-			if (!response.headers.get('content-type')?.toLowerCase().includes('text/html')) throw new Error('The link is not an HTML page');
-			const contentLength = Number(response.headers.get('content-length') ?? 0);
-			if (contentLength > MAX_HTML_BYTES) throw new Error('Preview page is too large');
-			return json(parsePreview(await readLimitedBody(response), pageUrl), { headers: { 'cache-control': 'public, max-age=3600' } });
+			const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+			if (contentType && !contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
+				throw new Error('The link is not an HTML page');
+			}
+			// Do not reject on Content-Length: we only read until </head>.
+			return json(parsePreview(await readHtmlHead(response), pageUrl, originalUrl), {
+				headers: { 'cache-control': 'public, max-age=3600' }
+			});
 		}
 		throw new Error('Too many redirects');
 	} catch (error) {

@@ -40,7 +40,9 @@
 	}
 
 	const columns = $derived.by(() => {
-		const n = notes.length === 1 ? 1 : colCount;
+		// Always pack into the responsive column count so a single card keeps
+		// the same width as multi-note gallery (never stretches full width).
+		const n = colCount;
 		const cols: Note[][] = Array.from({ length: n }, () => []);
 		const heights: number[] = Array(n).fill(0);
 		for (const note of notes) {
