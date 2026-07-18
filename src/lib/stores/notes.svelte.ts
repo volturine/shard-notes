@@ -310,9 +310,35 @@ export class NotesStore {
 		this.markLabelsDirty();
 	}
 
-	removeLabel(id: string): void {
+	removeLabel(id: string, options: { deleteNotes?: boolean } = {}): void {
 		if (!this.labels.some((label) => label.id === id)) return;
 		const deletedAt = Date.now();
+		const affected = this.notes.filter((note) => note.labels.includes(id));
+
+		if (options.deleteNotes) {
+			// Trash notes that carry this label (recoverable from Trash).
+			this.notes = this.notes.map((note) => {
+				if (!note.labels.includes(id)) return note;
+				if (note.trashed) {
+					return { ...note, labels: note.labels.filter((labelId) => labelId !== id), updatedAt: deletedAt };
+				}
+				return {
+					...note,
+					labels: note.labels.filter((labelId) => labelId !== id),
+					trashed: true,
+					trashedAt: deletedAt,
+					pinned: false,
+					updatedAt: deletedAt
+				};
+			});
+			this.labels = this.labels.filter((label) => label.id !== id);
+			this.mirrorToLS();
+			deleteLabel(id).catch((err) => this.recordPersistenceError('Could not delete label', err));
+			for (const note of affected) this.persist(note.id);
+			this.markLabelsDeleted([id], deletedAt);
+			return;
+		}
+
 		this.labels = this.labels.filter((label) => label.id !== id);
 		const affectedNoteIds: string[] = [];
 		this.notes = this.notes.map((note) => {

@@ -59,7 +59,7 @@
 	{/if}
 
 	<article
-		class="scrollable relative z-[1] flex w-full max-h-[320px] cursor-pointer flex-col overflow-y-auto overflow-x-hidden rounded-lg border border-black/5 shadow-sm transition-shadow dark:border-white/10"
+		class="relative z-[1] flex w-full max-h-[320px] cursor-pointer flex-col overflow-hidden rounded-lg border border-black/5 shadow-sm transition-shadow dark:border-white/10"
 		style="background-color: {bgColor(note.color)}; {cardSwipeStyle(offsetX, dragging)}"
 		class:shadow-md={note.pinned}
 		onpointerdown={swipe.onPointerDown}
@@ -68,24 +68,26 @@
 		onpointercancel={swipe.onPointerCancel}
 		onclick={openUnlessAction}
 	>
-		{#if note.reminder != null}
-			<div
-				class="flex items-center gap-1 rounded-t-lg bg-black/5 px-3 py-1 text-xs text-[var(--gkc-text-muted)] dark:bg-white/5"
-			>
-				<span>⏰</span>
-				<span>{formatReminder(note.reminder)}</span>
-			</div>
-		{/if}
-
-		<div class="block min-h-0 flex-1 w-full p-3 pb-2 text-left">
-			{#if note.title}
-				<h3 class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--gkc-text)]">{note.title}</h3>
+		<div class="scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+			{#if note.reminder != null}
+				<div
+					class="flex items-center gap-1 rounded-t-lg bg-black/5 px-3 py-1 text-xs text-[var(--gkc-text-muted)] dark:bg-white/5"
+				>
+					<span>⏰</span>
+					<span>{formatReminder(note.reminder)}</span>
+				</div>
 			{/if}
-			<NoteBodyDisplay {note} />
+
+			<div class="block w-full p-3 pb-2 text-left">
+				{#if note.title}
+					<h3 class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--gkc-text)]">{note.title}</h3>
+				{/if}
+				<NoteBodyDisplay {note} />
+			</div>
 		</div>
 
 		{#if labelsForNote.length}
-			<div class="flex flex-wrap gap-1 px-3 pb-3 pt-1">
+			<div class="flex shrink-0 flex-wrap gap-1 border-t border-black/[0.04] px-3 pb-3 pt-2 dark:border-white/[0.06]">
 				{#each labelsForNote as label (label.id)}
 					<span
 						class="rounded px-1.5 py-0.5 text-[10px] font-medium bg-black/5 text-[var(--gkc-text-muted)] dark:bg-white/10"
