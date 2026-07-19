@@ -21,6 +21,7 @@ export function createCardSwipe(opts: {
 	const threshold = opts.threshold ?? 80;
 	let offsetX = 0;
 	let dragging = false;
+	let tracking = false;
 	let startX = 0;
 	let startY = 0;
 	let decidedHorizontal = false;
@@ -31,21 +32,31 @@ export function createCardSwipe(opts: {
 		opts.setVisual({ offsetX, dragging });
 	}
 
+	function finishTracking() {
+		tracking = false;
+		pointerId = null;
+		decidedHorizontal = false;
+	}
+
 	function onPointerDown(e: PointerEvent) {
-		if (dragging) return;
+		if (tracking) return;
 		const target = e.target as HTMLElement;
 		if (target.closest('[data-checklist-toggle], [data-photo], [data-file], button, input, textarea')) return;
+
+		// Keep the pointer until we can identify its direction, but do not promote
+		// the card to a transformed layer yet. On iOS, transforming a card before
+		// a vertical pan is classified interrupts its nested native scroll.
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 		pointerId = e.pointerId;
 		startX = e.clientX;
 		startY = e.clientY;
-		dragging = true;
+		tracking = true;
+		dragging = false;
 		decidedHorizontal = false;
-		publish();
 	}
 
 	function onPointerMove(e: PointerEvent) {
-		if (!dragging || e.pointerId !== pointerId) return;
+		if (!tracking || e.pointerId !== pointerId) return;
 		const dx = e.clientX - startX;
 		const dy = e.clientY - startY;
 		if (!decidedHorizontal) {
@@ -53,23 +64,27 @@ export function createCardSwipe(opts: {
 			decidedHorizontal = Math.abs(dx) > Math.abs(dy);
 			if (!decidedHorizontal) {
 				(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-				dragging = false;
-				publish();
+				finishTracking();
 				return;
 			}
-			e.preventDefault();
+
+			// Only horizontal swipes opt into visual transform/compositing.
+			dragging = true;
 		}
+
 		e.preventDefault();
 		offsetX = Math.max(-120, Math.min(120, dx));
 		publish();
 	}
 
 	function onPointerUp(e: PointerEvent) {
-		if (!dragging || e.pointerId !== pointerId) return;
+		if (!tracking || e.pointerId !== pointerId) return;
+		finishTracking();
+		if (!dragging) return;
+
 		const wasDrag = Math.abs(offsetX) >= threshold;
 		const moved = Math.abs(offsetX) > 5;
 		dragging = false;
-		pointerId = null;
 
 		if (wasDrag) {
 			if (offsetX < 0) {
@@ -97,8 +112,9 @@ export function createCardSwipe(opts: {
 
 	function onPointerCancel(e: PointerEvent) {
 		if (e.pointerId !== pointerId) return;
+		finishTracking();
+		if (!dragging) return;
 		dragging = false;
-		pointerId = null;
 		offsetX = 0;
 		publish();
 	}
