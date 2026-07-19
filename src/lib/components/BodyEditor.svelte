@@ -49,7 +49,8 @@
 	let pendingFocus = $state<number | null>(null);
 	let pendingCursor = $state<number | null>(null);
 	let focusedRootId = $state<number | null>(null);
-	let draftSubtaskId = $state<number | null>(null);
+	// Empty checklist rows created by Enter or Add sub-task stay UI-only until typed.
+	let draftTaskId = $state<number | null>(null);
 	let handledFocusSignal = 0;
 
 	let lastBody = '';
@@ -61,11 +62,34 @@
 	});
 
 	function syncBody() {
-		// A newly added blank sub-task is UI-only until the user enters text.
-		const newBody = serializeLines(lines.filter((line) => line.id !== draftSubtaskId));
+		// A blank task draft is UI-only until the user enters text.
+		const newBody = serializeLines(lines.filter((line) => line.id !== draftTaskId));
 		lastBody = newBody;
 		body = newBody;
 		oninput?.();
+	}
+
+	function discardEmptyDraft(id: number) {
+		if (draftTaskId !== id) return;
+		const index = lines.findIndex((line) => line.id === id);
+		if (index < 0 || lines[index].text.trim()) {
+			draftTaskId = null;
+			return;
+		}
+		lines.splice(index, 1);
+		draftTaskId = null;
+		syncBody();
+	}
+
+	function previousTaskIndex(index: number): number {
+		const indent = lines[index]?.isCheck ? lines[index].indent : 0;
+		for (let i = index - 1; i >= 0; i--) {
+			const candidate = lines[i];
+			if (!candidate.isCheck) continue;
+			// A sibling sub-task wins; otherwise this is the parent task.
+			if (indent > 0 ? candidate.indent <= indent : candidate.indent === 0) return i;
+		}
+		return Math.max(0, index - 1);
 	}
 
 	function onLineInput(i: number, e: Event) {
@@ -87,7 +111,7 @@
 		}
 
 		lines[i].text = value;
-		if (lines[i].id === draftSubtaskId && value.trim()) draftSubtaskId = null;
+		if (lines[i].id === draftTaskId && value.trim()) draftTaskId = null;
 		syncBody();
 	}
 
@@ -133,9 +157,9 @@
 			const end = input.selectionEnd;
 
 			if (line.isCheck && line.text.trim() === '') {
-				if (line.id === draftSubtaskId) {
+				if (line.id === draftTaskId) {
 					lines.splice(i, 1);
-					draftSubtaskId = null;
+					draftTaskId = null;
 					pendingFocus = Math.max(0, i - 1);
 					pendingCursor = null;
 					return;
@@ -164,7 +188,9 @@
 				// At the end of a task (or within a sub-task), Enter stays at the same level.
 				const splitIntoSubtask = line.isCheck && line.indent === 0 && after.length > 0;
 				if (line.isCheck) {
-					lines.splice(i + 1, 0, newLine(after, true, false, splitIntoSubtask ? 1 : line.indent));
+					const next = newLine(after, true, false, splitIntoSubtask ? 1 : line.indent);
+					lines.splice(i + 1, 0, next);
+					if (!after.trim()) draftTaskId = next.id;
 				} else {
 					lines.splice(i + 1, 0, newLine(after));
 				}
@@ -180,7 +206,20 @@
 			if (input.selectionStart === 0 && input.selectionEnd === 0) {
 				e.preventDefault();
 				const line = lines[i];
-				// At start of indented task: outdent before merging
+				if (line.isCheck && line.text.trim() === '') {
+					// Remove an empty sub-task and return to its previous sibling, or its
+					// parent root when it was the first/only sub-task.
+					const targetIndex = previousTaskIndex(i);
+					const targetId = lines[targetIndex]?.id;
+					lines.splice(i, 1);
+					if (line.id === draftTaskId) draftTaskId = null;
+					syncBody();
+					const nextIndex = lines.findIndex((row) => row.id === targetId);
+					pendingFocus = nextIndex >= 0 ? nextIndex : Math.max(0, i - 1);
+					pendingCursor = lines[pendingFocus]?.text.length ?? 0;
+					return;
+				}
+				// At start of a non-empty indented task: outdent before merging.
 				if (line.isCheck && line.indent > 0) {
 					line.indent -= 1;
 					syncBody();
@@ -212,15 +251,15 @@
 		const root = lines[rootIndex];
 		// Two levels only: a sub-task cannot have sub-tasks.
 		if (!root?.isCheck || root.indent !== 0) return;
-		if (draftSubtaskId !== null) {
-			const existingIndex = lines.findIndex((line) => line.id === draftSubtaskId);
+		if (draftTaskId !== null) {
+			const existingIndex = lines.findIndex((line) => line.id === draftTaskId);
 			if (existingIndex >= 0) {
 				pendingFocus = existingIndex;
 				pendingCursor = 0;
 				return;
 			}
 			// Discard a stale draft marker and make a fresh editable row.
-			draftSubtaskId = null;
+			draftTaskId = null;
 		}
 		let insertAt = rootIndex + 1;
 		while (insertAt < lines.length && (!lines[insertAt].isCheck || lines[insertAt].indent > root.indent)) {
@@ -228,7 +267,7 @@
 		}
 		const draft = newLine('', true, false, 1);
 		lines.splice(insertAt, 0, draft);
-		draftSubtaskId = draft.id;
+		draftTaskId = draft.id;
 		pendingFocus = insertAt;
 		pendingCursor = 0;
 	}
@@ -273,9 +312,9 @@
 		if (focusLine === null) {
 			const restoreLineId = focusedRootId;
 			const fallbackLineId = focusedRootId;
-			if (draftSubtaskId !== null) {
-				lines = lines.filter((line) => line.id !== draftSubtaskId);
-				draftSubtaskId = null;
+			if (draftTaskId !== null) {
+				lines = lines.filter((line) => line.id !== draftTaskId);
+				draftTaskId = null;
 			}
 			focusedRootId = null;
 			const restoreIndex = lines.findIndex((line) => line.id === restoreLineId);
@@ -287,9 +326,9 @@
 
 		let targetLine = parentTaskIndex(Math.max(0, Math.min(focusLine, lines.length - 1)));
 		const targetId = lines[targetLine]?.id;
-		if (draftSubtaskId !== null) {
-			lines = lines.filter((line) => line.id !== draftSubtaskId);
-			draftSubtaskId = null;
+		if (draftTaskId !== null) {
+			lines = lines.filter((line) => line.id !== draftTaskId);
+			draftTaskId = null;
 		}
 		targetLine = parentTaskIndex(Math.max(0, lines.findIndex((line) => line.id === targetId)));
 		focusedRootId = lines[targetLine]?.isCheck ? lines[targetLine].id : null;
@@ -348,6 +387,7 @@
 							data-line={focusedIndex}
 							value={focusedLine.text}
 							oninput={(e) => onLineInput(focusedIndex, e)}
+							onblur={() => discardEmptyDraft(focusedLine.id)}
 							onkeydown={(e) => onLineKeydown(e, focusedIndex)}
 							placeholder={focusedLine.indent > focusedRootIndent ? 'Sub-task' : 'Task'}
 							class="flex-1 min-w-0 resize-none overflow-hidden bg-transparent outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content] {focusedLine.checked ? 'line-through opacity-50' : ''} {focusedLine.indent > focusedRootIndent ? 'text-[13px]' : 'text-[15px] font-medium'}"
@@ -408,6 +448,7 @@
 					data-line={i}
 					value={line.text}
 					oninput={(e) => onLineInput(i, e)}
+					onblur={() => discardEmptyDraft(line.id)}
 					onkeydown={(e) => onLineKeydown(e, i)}
 					onclick={() => {
 						if (line.isCheck) onFocusTask?.(parentTaskIndex(i));
