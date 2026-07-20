@@ -1,7 +1,8 @@
 // Rune-based notes & labels store. Persists to IndexedDB via $effect.
 import type { Note, Label, NoteColor } from '$lib/types';
 import {
-	getAllNotes,
+	getAllNotesMetadata,
+	hydrateNoteAttachments,
 	putNote,
 	deleteNote,
 	getAllLabels,
@@ -13,6 +14,8 @@ import {
 	clearAllLabels
 } from '$lib/db/idb';
 import { mergeNoteLists, mergeTwoNotes, mergeLabelLists } from '$lib/noteMerge';
+import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
+import { AttachmentHydrationQueue } from '$lib/attachmentHydrationQueue';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { kanbanStore } from '$lib/stores/kanban.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
@@ -28,6 +31,9 @@ export class NotesStore {
 	lastPersistError = $state<string | null>(null);
 	deletedNoteIds = $state<Record<string, number>>(readTombstones());
 	deletedLabelIds = $state<Record<string, number>>(readLabelTombstones());
+	private attachmentLoads = new Map<string, Promise<void>>();
+	private attachmentPass: Promise<void> | null = null;
+	private visibleAttachmentQueue = new AttachmentHydrationQueue((noteId) => this.ensureNoteAttachments(noteId));
 
 	constructor() {
 		this.notes = readNotesMirror();
@@ -69,7 +75,7 @@ export class NotesStore {
 		let dbLabels: Label[] = [];
 		let deviceReadFailed = false;
 		try {
-			[dbNotes, dbLabels] = await Promise.all([getAllNotes(), getAllLabels()]);
+			[dbNotes, dbLabels] = await Promise.all([getAllNotesMetadata(), getAllLabels()]);
 		} catch (err) {
 			deviceReadFailed = true;
 			this.recordPersistenceError('Could not read IndexedDB', err);
@@ -116,7 +122,7 @@ export class NotesStore {
 
 	private async rehydrateFromIDB() {
 		try {
-			const [dbNotes, dbLabels] = await Promise.all([getAllNotes(), getAllLabels()]);
+			const [dbNotes, dbLabels] = await Promise.all([getAllNotesMetadata(), getAllLabels()]);
 			this.notes = mergeNoteLists(this.notes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
 			this.labels = mergeLabelLists(this.labels, dbLabels).sort((a, b) => a.name.localeCompare(b.name));
 			this.seedLinkPreviewCache(this.notes);
@@ -124,6 +130,59 @@ export class NotesStore {
 		} catch (err) {
 			this.recordPersistenceError('Could not rehydrate from IndexedDB', err);
 		}
+	}
+
+	/** Fill a note's attachment placeholders without blocking the initial note render. */
+	async ensureNoteAttachments(noteId: string): Promise<void> {
+		const existing = this.notes.find((note) => note.id === noteId);
+		if (!existing || !(existing.images ?? []).some((image) => !image.dataUrl)) return;
+		const pending = this.attachmentLoads.get(noteId);
+		if (pending) return pending;
+
+		const source = cloneNote(existing);
+		const load = hydrateNoteAttachments(source)
+			.then((hydrated) => {
+				const index = this.notes.findIndex((note) => note.id === noteId);
+				if (index === -1) return;
+				const current = this.notes[index];
+				const images = mergeHydratedImages(current.images ?? [], hydrated.images ?? []);
+				if (images.some((image, imageIndex) => image !== current.images?.[imageIndex])) {
+					this.notes[index] = { ...current, images };
+				}
+			})
+			.catch((err) => this.recordPersistenceError(`Could not load attachments for note ${noteId}`, err));
+		this.attachmentLoads.set(noteId, load);
+		return load.finally(() => {
+			if (this.attachmentLoads.get(noteId) === load) this.attachmentLoads.delete(noteId);
+		});
+	}
+
+	/** Explicit full hydration for sync, bounded to two complete notes at a time. */
+	private hydrateAllAttachments(): Promise<void> {
+		if (this.attachmentPass) return this.attachmentPass;
+		const ids = this.notes
+			.filter((note) => (note.images ?? []).some((image) => !image.dataUrl))
+			.map((note) => note.id);
+		if (ids.length === 0) return Promise.resolve();
+
+		let next = 0;
+		const worker = async () => {
+			while (next < ids.length) {
+				const noteId = ids[next++];
+				await this.ensureNoteAttachments(noteId);
+			}
+		};
+		this.attachmentPass = Promise.all(Array.from({ length: Math.min(2, ids.length) }, worker))
+			.then(() => undefined)
+			.finally(() => { this.attachmentPass = null; });
+		return this.attachmentPass;
+	}
+
+	/** Queue attachment bytes only when a note card enters the viewport. */
+	requestVisibleNoteAttachments(noteId: string): void {
+		const note = this.notes.find((item) => item.id === noteId);
+		if (!note || !(note.images ?? []).some((image) => !image.dataUrl)) return;
+		this.visibleAttachmentQueue.enqueue(noteId);
 	}
 
 	async flushNote(id: string, patch: Partial<Note> = {}): Promise<void> {
@@ -398,7 +457,7 @@ export class NotesStore {
 		const mirrorNotes = readNotesMirror();
 		const mirrorLabels = readLabelsMirror();
 		try {
-			const [dbNotes, dbLabels] = await Promise.all([getAllNotes(), getAllLabels()]);
+			const [dbNotes, dbLabels] = await Promise.all([getAllNotesMetadata(), getAllLabels()]);
 			this.notes = mergeNoteLists(mirrorNotes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
 			this.labels = mergeLabelLists(mirrorLabels, dbLabels).sort((a, b) => a.name.localeCompare(b.name));
 			this.mirrorToLS();
@@ -555,6 +614,8 @@ export class NotesStore {
 	// device copy and the server applies deterministic per-record LWW merging.
 	private async doSync(indicate = false): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
+		// Sync must never turn an in-flight metadata placeholder into a missing image.
+		await this.hydrateAllAttachments();
 		const localNotes = this.notes.map(cloneNote);
 		const localLabels = [...this.labels];
 		try {

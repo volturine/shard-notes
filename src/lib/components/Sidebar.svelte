@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { fly } from 'svelte/transition';
+	import { flushSync } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import type { Label } from '$lib/types';
@@ -13,6 +14,8 @@
 	let pendingDelete: Label | null = $state(null);
 	let newLabelInput: HTMLInputElement | null = $state(null);
 	let renameInput: HTMLInputElement | null = $state(null);
+	let navigationFrame: number | null = null;
+	let navigationTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const navItems: { view: View; label: string; icon: 'notes' | 'kanban' | 'reminders' | 'archive' | 'trash' }[] = [
 		{ view: 'notes', label: 'Notes', icon: 'notes' },
@@ -28,24 +31,43 @@
 		new Map(notesStore.labels.map((label) => [label.id, notesStore.notesForLabel(label.id).length]))
 	);
 
+	function destination(view: View, labelId: string | null = null): string | null {
+		if (view === 'notes') return '/';
+		if (view === 'kanban') return '/kanban';
+		if (view === 'reminders') return '/reminders';
+		if (view === 'archive') return '/archive';
+		if (view === 'trash') return '/trash';
+		return view === 'label' && labelId ? `/label/${labelId}` : null;
+	}
+
 	function navigate(view: View, labelId: string | null = null) {
+		const target = destination(view, labelId);
+		if (!target) return;
 		uiStore.setView(view, labelId);
-		if (view === 'notes') goto('/');
-		else if (view === 'kanban') goto('/kanban');
-		else if (view === 'reminders') goto('/reminders');
-		else if (view === 'archive') goto('/archive');
-		else if (view === 'trash') goto('/trash');
-		else if (view === 'label' && labelId) goto(`/label/${labelId}`);
+		if (target === page.url.pathname) return;
+
+		// The iPad trace showed that route work could run for ~300 ms before its
+		// first animation frame. Commit the selection, then begin navigation from a
+		// timer scheduled *after* the next rendering update. This is an actual paint
+		// boundary rather than merely queueing goto() beside the state change.
+		flushSync(() => { uiStore.pendingPath = target; });
+		if (navigationFrame !== null) cancelAnimationFrame(navigationFrame);
+		if (navigationTimer !== null) clearTimeout(navigationTimer);
+		navigationFrame = requestAnimationFrame(() => {
+			navigationFrame = null;
+			navigationTimer = setTimeout(() => {
+				navigationTimer = null;
+				void goto(target).finally(() => {
+					if (uiStore.pendingPath === target) uiStore.pendingPath = null;
+				});
+			}, 0);
+		});
 	}
 
 	function isActive(view: View, labelId: string | null = null): boolean {
-		const path = page.url.pathname;
-		if (view === 'notes') return path === '/';
-		if (view === 'kanban') return path === '/kanban';
-		if (view === 'reminders') return path === '/reminders';
-		if (view === 'archive') return path === '/archive';
-		if (view === 'trash') return path === '/trash';
-		return view === 'label' && !!labelId && path === `/label/${labelId}`;
+		const target = destination(view, labelId);
+		if (!target) return false;
+		return uiStore.pendingPath ? uiStore.pendingPath === target : page.url.pathname === target;
 	}
 
 	function enterEditMode() {

@@ -138,9 +138,14 @@ async function putNoteSnapshot(note: Note): Promise<void> {
 	const existingKeys = (await db.getAllKeys(IMAGES_STORE)).filter((key) =>
 		String(key).startsWith(`${note.id}::`)
 	);
+	const desiredKeys = new Set((note.images ?? []).map((image) => imageKey(note.id, image.id)));
 	const lean = detachNote(note);
 	const tx = db.transaction([NOTES_STORE, IMAGES_STORE], 'readwrite');
-	for (const key of existingKeys) tx.objectStore(IMAGES_STORE).delete(key);
+	// A metadata-only note is normal during asynchronous hydration. Keep its
+	// existing blobs; only an attachment removed from the current list is deleted.
+	for (const key of existingKeys) {
+		if (!desiredKeys.has(String(key))) tx.objectStore(IMAGES_STORE).delete(key);
+	}
 	for (const { key, blob } of blobs) tx.objectStore(IMAGES_STORE).put(blob, key);
 	tx.objectStore(NOTES_STORE).put(lean);
 	await tx.done;
@@ -156,13 +161,23 @@ function enqueueNote<T>(noteId: string, operation: () => Promise<T>): Promise<T>
 	});
 }
 
-export async function getAllNotes(): Promise<Note[]> {
+/** Fast metadata pass: note rows are lean and attachment blobs remain in IDB. */
+export async function getAllNotesMetadata(): Promise<Note[]> {
 	const db = await getDB();
-	const notes = (await db.getAll(NOTES_STORE)) as Note[];
+	return ((await db.getAll(NOTES_STORE)) as Note[]).map(plainNote);
+}
+
+/** Hydrate every attachment for one note. Callers schedule this with bounded concurrency. */
+export async function hydrateNoteAttachments(note: Note): Promise<Note> {
+	const db = await getDB();
+	return hydrateNoteImages(db, note);
+}
+
+/** Legacy full-read helper for callers that explicitly need all attachment bytes now. */
+export async function getAllNotes(): Promise<Note[]> {
+	const notes = await getAllNotesMetadata();
 	const hydrated: Note[] = [];
-	for (const note of notes) {
-		hydrated.push(await hydrateNoteImages(db, note));
-	}
+	for (const note of notes) hydrated.push(await hydrateNoteAttachments(note));
 	return hydrated;
 }
 

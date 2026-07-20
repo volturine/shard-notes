@@ -2,6 +2,7 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { noteToPlainText, noteAttachments } from '$lib/checklistBody';
+	import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
 	import type { NoteColor, NoteImage } from '$lib/types';
 	import { KEEP_COLORS, KEEP_DARK_COLORS } from '$lib/types';
 	import ColorPalette from './ColorPalette.svelte';
@@ -67,6 +68,17 @@
 			reminderOpen = false;
 			labelOpen = false;
 		}
+	});
+
+	$effect(() => {
+		const currentId = note?.id;
+		if (!currentId) return;
+		void notesStore.ensureNoteAttachments(currentId).then(() => {
+			if (syncedId !== currentId) return;
+			const hydrated = notesStore.notes.find((item) => item.id === currentId);
+			if (!hydrated) return;
+			images = mergeHydratedImages(images, noteAttachments(hydrated));
+		});
 	});
 
 	function focusTask(line: number) {

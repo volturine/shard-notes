@@ -12,14 +12,33 @@
 
 	const segments = $derived(parseBody(note.body ?? ''));
 	const attachments = $derived(noteAttachments(note));
-	const photos = $derived(attachments.filter(isImageAttachment));
+	const imageAttachments = $derived(attachments.filter(isImageAttachment));
+	const photos = $derived(imageAttachments.filter((attachment) => !!attachment.dataUrl));
+	const pendingPhotos = $derived(imageAttachments.filter((attachment) => !attachment.dataUrl));
 	const files = $derived(attachments.filter((a) => !isImageAttachment(a)));
 	const links = $derived(extractHttpUrls(note.body ?? ''));
 	const previewsByUrl = $derived(
 		new Map((note.linkPreviews ?? []).filter(isUsableLinkPreview).map((preview) => [preview.url, preview]))
 	);
+	let contentElement: HTMLDivElement;
 	let focusedImageIndex = $state<number | null>(null);
 	let focusedAttachment = $state<NoteImage | null>(null);
+
+	$effect(() => {
+		if (!contentElement || !(note.images ?? []).some((attachment) => !attachment.dataUrl)) return;
+		const request = () => notesStore.requestVisibleNoteAttachments(note.id);
+		if (!('IntersectionObserver' in window)) {
+			const frame = requestAnimationFrame(request);
+			return () => cancelAnimationFrame(frame);
+		}
+		const observer = new IntersectionObserver((entries) => {
+			if (!entries.some((entry) => entry.isIntersecting)) return;
+			observer.disconnect();
+			request();
+		});
+		observer.observe(contentElement);
+		return () => observer.disconnect();
+	});
 
 	function focusImage(index: number, event: MouseEvent) {
 		event.stopPropagation();
@@ -29,7 +48,7 @@
 	function openFile(event: MouseEvent, id: string) {
 		event.stopPropagation();
 		const file = files.find((f) => f.id === id);
-		if (!file) return;
+		if (!file?.dataUrl) return;
 		if (isInlinePreviewable(file)) focusedAttachment = file;
 		else void openAttachment(file);
 	}
@@ -39,7 +58,7 @@
 	}
 </script>
 
-<div class="text-sm text-[var(--gkc-text)]">
+<div bind:this={contentElement} class="text-sm text-[var(--gkc-text)]">
 	{#each segments as seg (seg.lineIndex)}
 		{#if seg.type === 'check'}
 			<div
@@ -80,7 +99,7 @@
 	</div>
 {/if}
 
-{#if photos.length > 0}
+{#if photos.length > 0 || pendingPhotos.length > 0}
 	<div class="mt-2 flex flex-wrap gap-1.5">
 		{#each photos as img, index (img.id)}
 			<button
@@ -95,8 +114,12 @@
 					alt={img.name ?? 'Photo'}
 					class="max-h-32 max-w-full rounded-lg object-cover"
 					loading="lazy"
+					decoding="async"
 				/>
 			</button>
+		{/each}
+		{#each pendingPhotos as img (img.id)}
+			<div class="h-24 w-24 animate-pulse rounded-lg bg-black/10 dark:bg-white/10" role="img" aria-label={`Loading ${img.name ?? 'photo'}`}></div>
 		{/each}
 	</div>
 {/if}
@@ -106,8 +129,10 @@
 		{#each files as file (file.id)}
 			<button
 				type="button"
-				class="flex w-full items-center gap-2 rounded-md border border-black/10 bg-black/5 px-2 py-1.5 text-left touch-manipulation dark:border-white/10 dark:bg-white/5"
+				class="flex w-full items-center gap-2 rounded-md border border-black/10 bg-black/5 px-2 py-1.5 text-left touch-manipulation disabled:opacity-60 dark:border-white/10 dark:bg-white/5"
 				data-file
+				disabled={!file.dataUrl}
+				aria-busy={!file.dataUrl}
 				onclick={(event) => openFile(event, file.id)}
 				aria-label={`Open ${file.name ?? 'file'}`}
 			>

@@ -1,0 +1,15 @@
+import type { NoteImage } from './types';
+
+/**
+ * Apply bytes read from IndexedDB without overwriting an edit made while they
+ * were loading. The current list owns membership; hydration only fills an
+ * existing empty payload.
+ */
+export function mergeHydratedImages(current: NoteImage[] = [], hydrated: NoteImage[] = []): NoteImage[] {
+	const hydratedById = new Map(hydrated.map((image) => [image.id, image]));
+	return current.map((image) => {
+		if (image.dataUrl) return image;
+		const loaded = hydratedById.get(image.id);
+		return loaded?.dataUrl ? { ...image, dataUrl: loaded.dataUrl, mime: image.mime || loaded.mime } : image;
+	});
+}

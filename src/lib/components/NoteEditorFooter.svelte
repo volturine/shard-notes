@@ -48,7 +48,9 @@
 	let focusedAttachment = $state<NoteImage | null>(null);
 	let attachError = $state('');
 
-	const photos = $derived(images.filter(isImageAttachment));
+	const imageAttachments = $derived(images.filter(isImageAttachment));
+	const photos = $derived(imageAttachments.filter((attachment) => !!attachment.dataUrl));
+	const pendingPhotos = $derived(imageAttachments.filter((attachment) => !attachment.dataUrl));
 	const files = $derived(images.filter((a) => !isImageAttachment(a)));
 	const photoIndexById = $derived(new Map(photos.map((p, i) => [p.id, i])));
 
@@ -183,7 +185,7 @@
 	<p class="px-3 pb-1 text-xs text-red-600 dark:text-red-400">{attachError}</p>
 {/if}
 
-{#if photos.length > 0}
+{#if photos.length > 0 || pendingPhotos.length > 0}
 	<div class="scrollable grid max-h-44 grid-cols-3 gap-2 overflow-y-auto px-3 pb-2 sm:grid-cols-4">
 		{#each photos as img (img.id)}
 			<div class="relative">
@@ -193,7 +195,7 @@
 					onclick={() => openPhoto(img.id)}
 					aria-label={`Open ${img.name ?? 'photo'}`}
 				>
-					<img src={img.dataUrl} alt={img.name ?? 'Photo'} class="h-full w-full object-cover" />
+					<img src={img.dataUrl} alt={img.name ?? 'Photo'} class="h-full w-full object-cover" loading="lazy" decoding="async" />
 				</button>
 				<button
 					type="button"
@@ -202,6 +204,9 @@
 					aria-label="Remove photo"
 				>✕</button>
 			</div>
+		{/each}
+		{#each pendingPhotos as img (img.id)}
+			<div class="aspect-square animate-pulse rounded-lg bg-black/10 dark:bg-white/10" role="img" aria-label={`Loading ${img.name ?? 'photo'}`}></div>
 		{/each}
 	</div>
 {/if}

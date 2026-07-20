@@ -86,6 +86,7 @@
 			src={images[activeIndex].dataUrl}
 			alt={images[activeIndex].name ?? 'Photo'}
 			class="pointer-events-auto max-h-[100dvh] max-w-full select-none object-contain"
+			decoding="async"
 			draggable="false"
 			onclick={revealControls}
 		/>

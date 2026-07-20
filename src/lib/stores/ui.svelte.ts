@@ -26,6 +26,8 @@ export class UIStore {
 	layout = $state<Layout>('grid');
 	view = $state<View>('notes');
 	activeLabelId = $state<string | null>(null);
+	// Ephemeral route-feedback state; never persisted across a reload.
+	pendingPath = $state<string | null>(null);
 	search = $state('');
 	composerFocused = $state(false);
 	settingsOpen = $state(false);
