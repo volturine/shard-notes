@@ -22,7 +22,16 @@ export const POST: RequestHandler = async ({ request }) => {
 		do {
 			syncCode = String(Math.floor(100000 + Math.random() * 900000));
 		} while (Object.values(data).some((user) => user.syncCode === syncCode));
-		data[username] = { syncCode, notes: [], labels: [], tombstones: {}, updatedAt: Date.now() };
+		data[username] = {
+			syncCode,
+			notes: [],
+			labels: [],
+			boards: [],
+			tombstones: {},
+			labelTombstones: {},
+			boardTombstones: {},
+			updatedAt: Date.now()
+		};
 		writeSyncData(data);
 		return json({ syncCode, username });
 	} catch (err) {

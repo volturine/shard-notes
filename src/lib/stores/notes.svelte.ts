@@ -14,6 +14,7 @@ import {
 } from '$lib/db/idb';
 import { mergeNoteLists, mergeTwoNotes, mergeLabelLists } from '$lib/noteMerge';
 import { syncStore } from '$lib/stores/sync.svelte';
+import { kanbanStore } from '$lib/stores/kanban.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
 import { readLabelsMirror, readNotesMirror, writeLabelsMirror, writeNotesMirror } from '$lib/noteStorage';
@@ -31,6 +32,10 @@ export class NotesStore {
 	constructor() {
 		this.notes = readNotesMirror();
 		this.labels = readLabelsMirror();
+		syncStore.onLocalDataChange = () => {
+			this.dirty = true;
+			this.scheduleSyncPush();
+		};
 		if (this.notes.length > 0) this.loaded = true;
 		if (typeof window !== 'undefined') {
 			window.addEventListener('visibilitychange', () => {
@@ -499,13 +504,15 @@ export class NotesStore {
 	async replaceWithCloudManual(): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
 		try {
-			const result = await syncStore.sync([], [], {}, {}, true);
+			const result = await syncStore.sync([], [], {}, {}, [], {}, true);
 			if (!result.success || !result.notes) {
 				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
 				return false;
 			}
 			const tombstones = result.tombstones ?? {};
 			const labelTombstones = result.labelTombstones ?? {};
+			const boardTombstones = result.boardTombstones ?? {};
+			kanbanStore.replaceWithCloud(result.boards ?? [], boardTombstones);
 			const cloudNotes = (result.notes as Note[])
 				.filter((note) => (Number(tombstones[note.id]) || 0) < note.updatedAt)
 				.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -551,7 +558,15 @@ export class NotesStore {
 		const localNotes = this.notes.map(cloneNote);
 		const localLabels = [...this.labels];
 		try {
-			const result = await syncStore.sync(localNotes, localLabels, this.deletedNoteIds, this.deletedLabelIds, indicate);
+			const result = await syncStore.sync(
+				localNotes,
+				localLabels,
+				this.deletedNoteIds,
+				this.deletedLabelIds,
+				kanbanStore.boardsForSync(),
+				kanbanStore.boardTombstonesForSync(),
+				indicate
+			);
 			if (!result.success || !result.notes) {
 				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
 				return false;
@@ -603,6 +618,7 @@ export class NotesStore {
 				.map((label) => label.id);
 			this.notes = mergedNotes;
 			this.labels = mergedLabels;
+			kanbanStore.applySync(result.boards ?? [], result.boardTombstones ?? {});
 			this.seedLinkPreviewCache(mergedNotes);
 			this.mirrorToLS();
 			for (const note of notesToPersist) await putNote(note);

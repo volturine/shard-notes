@@ -1,6 +1,6 @@
 // Rune-based UI store: sidebar open, dark mode, density, active view, search.
 export type Layout = 'grid' | 'list';
-export type View = 'notes' | 'reminders' | 'archive' | 'trash' | 'label';
+export type View = 'notes' | 'kanban' | 'reminders' | 'archive' | 'trash' | 'label';
 
 interface UIState {
 	sidebarOpen: boolean;

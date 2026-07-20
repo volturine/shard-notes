@@ -14,8 +14,9 @@
 	let newLabelInput: HTMLInputElement | null = $state(null);
 	let renameInput: HTMLInputElement | null = $state(null);
 
-	const navItems: { view: View; label: string; icon: 'notes' | 'reminders' | 'archive' | 'trash' }[] = [
+	const navItems: { view: View; label: string; icon: 'notes' | 'kanban' | 'reminders' | 'archive' | 'trash' }[] = [
 		{ view: 'notes', label: 'Notes', icon: 'notes' },
+		{ view: 'kanban', label: 'Kanban', icon: 'kanban' },
 		{ view: 'reminders', label: 'Reminders', icon: 'reminders' },
 		{ view: 'archive', label: 'Archive', icon: 'archive' },
 		{ view: 'trash', label: 'Trash', icon: 'trash' }
@@ -30,6 +31,7 @@
 	function navigate(view: View, labelId: string | null = null) {
 		uiStore.setView(view, labelId);
 		if (view === 'notes') goto('/');
+		else if (view === 'kanban') goto('/kanban');
 		else if (view === 'reminders') goto('/reminders');
 		else if (view === 'archive') goto('/archive');
 		else if (view === 'trash') goto('/trash');
@@ -39,6 +41,7 @@
 	function isActive(view: View, labelId: string | null = null): boolean {
 		const path = page.url.pathname;
 		if (view === 'notes') return path === '/';
+		if (view === 'kanban') return path === '/kanban';
 		if (view === 'reminders') return path === '/reminders';
 		if (view === 'archive') return path === '/archive';
 		if (view === 'trash') return path === '/trash';
@@ -134,6 +137,11 @@
 					<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M7 3.5h7.5L19 8v12.5a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1z" />
 						<path d="M14.5 3.5V8H19M9 12h6M9 15.5h6" />
+					</svg>
+				{:else if item.icon === 'kanban'}
+					<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="3.5" y="4" width="17" height="16" rx="1.5" />
+						<path d="M9 4v16M15 4v16M5.5 8h1M11 8h2M17 8h1M5.5 12h1M11 12h2M17 12h1" />
 					</svg>
 				{:else if item.icon === 'reminders'}
 					<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">

@@ -78,6 +78,18 @@ body {
 	overscroll-behavior: contain;
 }
 
+/* Horizontal Kanban board scroller. It remains a block scroll container so iOS keeps native panning. */
+.kanban-columns {
+	display: block;
+	-webkit-overflow-scrolling: touch;
+	overscroll-behavior-x: contain;
+}
+
+/* Let cards claim horizontal drags while preserving normal vertical page scrolling. */
+.kanban-card {
+	touch-action: pan-y;
+}
+
 /* List view = single column; grid uses .masonry-balanced (JS packing). */
 .masonry {
 	width: 100%;

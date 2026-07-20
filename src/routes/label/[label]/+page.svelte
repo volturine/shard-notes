@@ -17,6 +17,7 @@
 	const shell = $derived(notesShellClass());
 </script>
 
+{#key labelId}
 <div class="pt-4 pb-8">
 	{#if !label}
 		<div class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]">
@@ -55,3 +56,4 @@
 		{/if}
 	{/if}
 </div>
+{/key}
