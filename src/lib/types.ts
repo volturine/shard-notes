@@ -19,8 +19,13 @@ export type NoteColor =
 export interface NoteImage {
 	id: string;
 	mime: string;
-	/** data: URL — photos or any attached file */
+	/**
+	 * Full attachment bytes as a data URL when loaded into memory.
+	 * Empty while only the resident thumbnail is held for grid/list display.
+	 */
 	dataUrl: string;
+	/** Small always-resident preview for photos (JPEG data URL). */
+	thumbUrl?: string;
 	name?: string;
 	createdAt: number;
 }

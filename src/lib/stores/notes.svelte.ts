@@ -11,24 +11,154 @@ import {
 	bulkPutNotes,
 	bulkPutLabels,
 	clearAllNotes,
-	clearAllLabels
+	clearAllLabels,
+	replaceAllDeviceData,
+	getAllCachedLinkPreviews,
+	putCachedLinkPreview
 } from '$lib/db/idb';
 import { mergeNoteLists, mergeTwoNotes, mergeLabelLists } from '$lib/noteMerge';
 import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
 import { AttachmentHydrationQueue } from '$lib/attachmentHydrationQueue';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { kanbanStore } from '$lib/stores/kanban.svelte';
+import { uiStore, type Layout, type View } from '$lib/stores/ui.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
 import { readLabelsMirror, readNotesMirror, writeLabelsMirror, writeNotesMirror } from '$lib/noteStorage';
 import { readLabelTombstones, readTombstones, writeLabelTombstones, writeTombstones } from '$lib/syncTombstones';
-import { rememberLinkPreviews } from '$lib/linkPreview';
+import { rememberLinkPreviews, type LinkPreview } from '$lib/linkPreview';
+import { stripFullImageBytes } from '$lib/noteImages';
+import { makeImageThumbDataUrl } from '$lib/imageThumb';
+import { replacementFitsStorage } from '$lib/storageCapacity';
+import { formatStorageError } from '$lib/imageBlob';
+import type { KanbanBoard } from '$lib/kanban';
+import type { NoteImage } from '$lib/types';
+
+/** Full device backup — complete app/DB snapshot including full-resolution attachments. */
+export type ShardBackup = {
+	version: 3;
+	exportedAt: number;
+	notes: Note[];
+	labels: Label[];
+	boards: KanbanBoard[];
+	activeBoardId: string;
+	tombstones: Record<string, number>;
+	labelTombstones: Record<string, number>;
+	boardTombstones: Record<string, number>;
+	ui: {
+		sidebarOpen: boolean;
+		dark: boolean | null;
+		layout: Layout;
+		view: View;
+	};
+	sync: null | {
+		syncKey: string;
+		lastSync: number;
+	};
+	linkPreviews: LinkPreview[];
+};
+
+export type BackupImportProgress = {
+	phase: 'writing' | 'finishing';
+	completed: number;
+	total: number;
+};
+
+function asTombstoneMap(value: unknown): Record<string, number> {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+	return Object.fromEntries(
+		Object.entries(value).flatMap(([id, ts]) =>
+			typeof id === 'string' && Number(ts) > 0 ? [[id, Number(ts)]] : []
+		)
+	);
+}
+
+function normalizeImage(value: unknown): NoteImage | null {
+	if (!value || typeof value !== 'object') return null;
+	const image = value as Partial<NoteImage>;
+	if (typeof image.id !== 'string') return null;
+	return {
+		id: image.id,
+		mime: String(image.mime || 'application/octet-stream'),
+		dataUrl: typeof image.dataUrl === 'string' ? image.dataUrl : '',
+		createdAt: Number(image.createdAt) || 0,
+		...(typeof image.name === 'string' && image.name ? { name: image.name } : {}),
+		...(typeof image.thumbUrl === 'string' && image.thumbUrl ? { thumbUrl: image.thumbUrl } : {})
+	};
+}
+
+function normalizeBackup(data: unknown): ShardBackup | null {
+	if (!data || typeof data !== 'object') return null;
+	const raw = data as Record<string, unknown>;
+	if (!Array.isArray(raw.notes) || !Array.isArray(raw.labels)) return null;
+	const notes = (raw.notes as unknown[]).flatMap((item): Note[] => {
+		if (!item || typeof item !== 'object') return [];
+		const note = item as Partial<Note>;
+		if (typeof note.id !== 'string') return [];
+		const images = Array.isArray(note.images)
+			? note.images.flatMap((image) => {
+					const normalized = normalizeImage(image);
+					return normalized ? [normalized] : [];
+				})
+			: [];
+		return [cloneNote({
+			id: note.id,
+			title: String(note.title ?? ''),
+			body: String(note.body ?? ''),
+			color: (note.color as Note['color']) || 'default',
+			pinned: Boolean(note.pinned),
+			archived: Boolean(note.archived),
+			trashed: Boolean(note.trashed),
+			trashedAt: note.trashedAt == null ? null : Number(note.trashedAt),
+			createdAt: Number(note.createdAt) || 0,
+			updatedAt: Number(note.updatedAt) || 0,
+			reminder: note.reminder == null ? null : Number(note.reminder),
+			labels: Array.isArray(note.labels) ? note.labels.map(String) : [],
+			images,
+			...(Array.isArray(note.linkPreviews) ? { linkPreviews: note.linkPreviews as Note['linkPreviews'] } : {})
+		})];
+	});
+	const labels = (raw.labels as Label[]).flatMap((label): Label[] => {
+		if (!label || typeof label !== 'object' || typeof label.id !== 'string') return [];
+		return [{
+			id: String(label.id),
+			name: String(label.name ?? ''),
+			createdAt: Number(label.createdAt) || 0,
+			updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
+		}];
+	});
+	const boards = Array.isArray(raw.boards) ? (raw.boards as KanbanBoard[]) : [];
+	const uiRaw = raw.ui && typeof raw.ui === 'object' ? (raw.ui as Record<string, unknown>) : {};
+	const syncRaw = raw.sync && typeof raw.sync === 'object' ? (raw.sync as Record<string, unknown>) : null;
+	return {
+		version: 3,
+		exportedAt: Number(raw.exportedAt) || Date.now(),
+		notes,
+		labels,
+		boards,
+		activeBoardId: typeof raw.activeBoardId === 'string' ? raw.activeBoardId : '',
+		tombstones: asTombstoneMap(raw.tombstones),
+		labelTombstones: asTombstoneMap(raw.labelTombstones),
+		boardTombstones: asTombstoneMap(raw.boardTombstones),
+		ui: {
+			sidebarOpen: typeof uiRaw.sidebarOpen === 'boolean' ? uiRaw.sidebarOpen : true,
+			dark: typeof uiRaw.dark === 'boolean' || uiRaw.dark === null ? (uiRaw.dark as boolean | null) : null,
+			layout: uiRaw.layout === 'list' ? 'list' : 'grid',
+			view: typeof uiRaw.view === 'string' ? (uiRaw.view as View) : 'notes'
+		},
+		sync: syncRaw && typeof syncRaw.syncKey === 'string'
+			? { syncKey: syncRaw.syncKey, lastSync: Number(syncRaw.lastSync) || 0 }
+			: null,
+		linkPreviews: Array.isArray(raw.linkPreviews) ? (raw.linkPreviews as LinkPreview[]) : []
+	};
+}
 
 export class NotesStore {
 	notes = $state<Note[]>([]);
 	labels = $state<Label[]>([]);
 	loaded = $state(false);
 	lastPersistError = $state<string | null>(null);
+	backupImportProgress = $state<BackupImportProgress | null>(null);
 	deletedNoteIds = $state<Record<string, number>>(readTombstones());
 	deletedLabelIds = $state<Record<string, number>>(readLabelTombstones());
 	private attachmentLoads = new Map<string, Promise<void>>();
@@ -178,10 +308,29 @@ export class NotesStore {
 		return this.attachmentPass;
 	}
 
+	/** Only hydrate a few notes per sync so photo-heavy accounts transfer in fractions. */
+	private async hydrateAttachmentsForSync(): Promise<void> {
+		const ids = this.notes
+			.filter((note) => (note.images ?? []).some((image) => !image.dataUrl))
+			.map((note) => note.id)
+			.slice(0, 3);
+		for (const noteId of ids) await this.ensureNoteAttachments(noteId);
+	}
+
 	/** Queue attachment bytes only when a note card enters the viewport. */
 	requestVisibleNoteAttachments(noteId: string): void {
 		const note = this.notes.find((item) => item.id === noteId);
-		if (!note || !(note.images ?? []).some((image) => !image.dataUrl)) return;
+		if (!note) return;
+		// Prefer thumbs on cards. Only hydrate full blobs when a photo has no thumb at all
+		// or a non-image file still lacks bytes.
+		const needs = (note.images ?? []).some((image) => {
+			const mime = (image.mime || '').toLowerCase();
+			if (mime.startsWith('image/') && !mime.includes('dng') && mime !== 'image/tiff') {
+				return !image.thumbUrl && !image.dataUrl;
+			}
+			return !image.dataUrl;
+		});
+		if (!needs) return;
 		this.visibleAttachmentQueue.enqueue(noteId);
 	}
 
@@ -436,19 +585,98 @@ export class NotesStore {
 	}
 
 	// Backup ---------------------------------------------------------------
-	async exportBackup(): Promise<{ notes: Note[]; labels: Label[] }> {
-		return { notes: this.notes.map(cloneNote), labels: [...this.labels] };
+	/**
+	 * Full app/DB backup: notes (with full-resolution attachments), labels, boards,
+	 * tombstones, UI prefs, optional sync account, and cached link previews.
+	 */
+	async exportBackup(): Promise<ShardBackup> {
+		const fullNotes: Note[] = [];
+		for (const note of this.notes) {
+			const needsFull = (note.images ?? []).some((image) => !image.dataUrl);
+			fullNotes.push(needsFull ? await hydrateNoteAttachments(cloneNote(note)) : cloneNote(note));
+		}
+		const linkPreviews = await getAllCachedLinkPreviews().catch(() => [] as LinkPreview[]);
+		return {
+			version: 3,
+			exportedAt: Date.now(),
+			notes: fullNotes,
+			labels: this.labels.map((label) => ({ ...label })),
+			boards: kanbanStore.boardsForSync(),
+			activeBoardId: kanbanStore.activeBoardId,
+			tombstones: { ...this.deletedNoteIds },
+			labelTombstones: { ...this.deletedLabelIds },
+			boardTombstones: kanbanStore.boardTombstonesForSync(),
+			ui: {
+				sidebarOpen: uiStore.sidebarOpen,
+				dark: uiStore.dark,
+				layout: uiStore.layout,
+				view: uiStore.view
+			},
+			sync: syncStore.account
+				? { syncKey: syncStore.account.syncKey, lastSync: syncStore.lastSync }
+				: null,
+			linkPreviews
+		};
 	}
 
-	async importBackup(data: { notes: Note[]; labels: Label[] }): Promise<void> {
-		if (!data || !Array.isArray(data.notes) || !Array.isArray(data.labels)) return;
-		await clearAllNotes();
-		await clearAllLabels();
-		await bulkPutNotes(data.notes);
-		await bulkPutLabels(data.labels);
-		this.notes = [...data.notes].sort((a, b) => b.updatedAt - a.updatedAt);
-		this.labels = [...data.labels].sort((a, b) => a.name.localeCompare(b.name));
-		this.mirrorToLS();
+	private async compactPersistedNoteImages(note: Note): Promise<void> {
+		const images: NoteImage[] = [];
+		for (const image of note.images ?? []) {
+			let next = image;
+			if (image.dataUrl && !image.thumbUrl && (image.mime || '').startsWith('image/')) {
+				const thumbUrl = await makeImageThumbDataUrl(image.dataUrl);
+				if (thumbUrl) next = { ...image, thumbUrl };
+			}
+			images.push(stripFullImageBytes(next));
+		}
+		note.images = images;
+	}
+
+	async importBackup(data: unknown): Promise<{ success: boolean; error?: string }> {
+		if (this.backupImportProgress) return { success: false, error: 'A backup import is already running.' };
+		const backup = normalizeBackup(data);
+		if (!backup) return { success: false, error: 'That file is not a valid Shard full backup.' };
+		try {
+			if (navigator.storage?.estimate) {
+				const estimate = await navigator.storage.estimate();
+				if (!replacementFitsStorage(backup.notes, estimate)) {
+					return { success: false, error: 'Storage full on this device — free space or remove old notes/attachments.' };
+				}
+			}
+			this.backupImportProgress = { phase: 'writing', completed: 0, total: backup.notes.length };
+			await replaceAllDeviceData(backup.notes, backup.labels, async (note) => {
+				await this.compactPersistedNoteImages(note);
+				if (this.backupImportProgress) this.backupImportProgress.completed += 1;
+			});
+
+			this.backupImportProgress = { phase: 'finishing', completed: backup.notes.length, total: backup.notes.length };
+			this.notes = backup.notes.sort((a, b) => b.updatedAt - a.updatedAt);
+			this.labels = [...backup.labels].sort((a, b) => a.name.localeCompare(b.name));
+			this.deletedNoteIds = { ...backup.tombstones };
+			this.deletedLabelIds = { ...backup.labelTombstones };
+			writeTombstones(this.deletedNoteIds);
+			writeLabelTombstones(this.deletedLabelIds);
+			kanbanStore.replaceWithCloud(backup.boards, backup.boardTombstones);
+			if (backup.activeBoardId && kanbanStore.boards.some((board) => board.id === backup.activeBoardId)) {
+				kanbanStore.selectBoard(backup.activeBoardId);
+			}
+			uiStore.restoreState(backup.ui);
+			syncStore.restoreFromBackup(backup.sync);
+			for (const preview of backup.linkPreviews) {
+				try { await putCachedLinkPreview(preview); } catch { /* best effort */ }
+			}
+			this.seedLinkPreviewCache(this.notes);
+			if (backup.linkPreviews.length) rememberLinkPreviews(backup.linkPreviews);
+			this.mirrorToLS();
+			this.dirty = true;
+			this.scheduleSyncPush();
+			return { success: true };
+		} catch (err) {
+			this.recordPersistenceError('Could not import full backup', err);
+			return { success: false, error: this.lastPersistError ?? 'Could not import full backup.' };
+		} finally {
+			this.backupImportProgress = null;
+		}
 	}
 
 	// Reload all three layers. Mirror is only a fast-boot cache; IDB always participates so
@@ -496,7 +724,7 @@ export class NotesStore {
 	}
 
 	private recordPersistenceError(context: string, err: unknown): void {
-		const detail = err instanceof Error ? err.message : String(err);
+		const detail = formatStorageError(err);
 		this.lastPersistError = `${context}: ${detail}`;
 		console.error(`[notes] ${context}`, err);
 	}
@@ -534,8 +762,24 @@ export class NotesStore {
 		// Preserve a crash-safe, blob-free copy synchronously before async IDB work.
 		this.mirrorToLS();
 		putNote(note)
-			.then(() => {
+			.then(async () => {
 				this.lastPersistError = null;
+				// Keep only small thumbs in memory after a durable write of full blobs.
+				const idx = this.notes.findIndex((item) => item.id === id);
+				if (idx < 0) return;
+				const current = this.notes[idx];
+				const images = await Promise.all((current.images ?? []).map(async (image) => {
+					let next = image;
+					if (image.dataUrl && !image.thumbUrl && (image.mime || '').startsWith('image/')) {
+						const thumbUrl = await makeImageThumbDataUrl(image.dataUrl);
+						if (thumbUrl) next = { ...image, thumbUrl };
+					}
+					return stripFullImageBytes(next);
+				}));
+				if (images.some((image, i) => image !== current.images?.[i])) {
+					this.notes[idx] = { ...current, images };
+					this.mirrorToLS();
+				}
 			})
 			.catch((err) => {
 				this.recordPersistenceError(`Could not save note ${id}`, err);
@@ -579,10 +823,14 @@ export class NotesStore {
 				.filter((label) => (Number(labelTombstones[label.id]) || 0) < label.updatedAt)
 				.sort((a, b) => a.name.localeCompare(b.name));
 
-			await clearAllNotes();
-			await clearAllLabels();
-			await bulkPutNotes(cloudNotes);
-			await bulkPutLabels(cloudLabels);
+			if (navigator.storage?.estimate) {
+				const estimate = await navigator.storage.estimate();
+				if (!replacementFitsStorage(cloudNotes, estimate)) {
+					this.lastPersistError = 'Storage full on this device — free space or remove old notes/attachments.';
+					return false;
+				}
+			}
+			await replaceAllDeviceData(cloudNotes, cloudLabels, (note) => this.compactPersistedNoteImages(note));
 			this.notes = cloudNotes;
 			this.labels = cloudLabels;
 			this.seedLinkPreviewCache(cloudNotes);
@@ -610,12 +858,14 @@ export class NotesStore {
 		return this.doSync(false);
 	}
 
-	// Core sync. Full note snapshots include images; local IDB remains the authoritative
-	// device copy and the server applies deterministic per-record LWW merging.
+	// Core sync. Local IDB remains authoritative; photo bytes move in small fractions.
 	private async doSync(indicate = false): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
-		// Sync must never turn an in-flight metadata placeholder into a missing image.
-		await this.hydrateAllAttachments();
+		// A newly reset relay needs one current-state bootstrap from this source device.
+		// Bytes are returned to thumb-only memory immediately after reconciliation below.
+		if (syncStore.needsCurrentStateBootstrap) await this.hydrateAllAttachments();
+		// Only pull a few full attachments into memory per normal cycle for upload readiness.
+		await this.hydrateAttachmentsForSync();
 		const localNotes = this.notes.map(cloneNote);
 		const localLabels = [...this.labels];
 		try {
@@ -632,6 +882,10 @@ export class NotesStore {
 				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
 				return false;
 			}
+			if (syncStore.consumeCurrentStateBootstrapRequest()) {
+				await this.hydrateAllAttachments();
+				return this.doSync(indicate);
+			}
 
 			const incomingTombstones = result.tombstones ?? {};
 			for (const [id, deletedAt] of Object.entries(incomingTombstones)) {
@@ -646,10 +900,21 @@ export class NotesStore {
 			const remoteNotes = (result.notes as Note[])
 				.filter((note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt);
 			const localById = new Map(this.notes.map((note) => [note.id, note]));
-			const remoteById = new Map(remoteNotes.map((note) => [note.id, note]));
-			const mergedNotes = mergeNoteLists(this.notes, remoteNotes)
+			let mergedNotes = mergeNoteLists(this.notes, remoteNotes)
 				.filter((note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt)
 				.sort((a, b) => b.updatedAt - a.updatedAt);
+			// Build thumbs for any newly received full photos, then drop full bytes from memory.
+			mergedNotes = await Promise.all(mergedNotes.map(async (note) => {
+				const images = await Promise.all((note.images ?? []).map(async (image) => {
+					let next = image;
+					if (image.dataUrl && !image.thumbUrl && (image.mime || '').startsWith('image/')) {
+						const thumbUrl = await makeImageThumbDataUrl(image.dataUrl);
+						if (thumbUrl) next = { ...image, thumbUrl };
+					}
+					return stripFullImageBytes(next);
+				}));
+				return { ...note, images };
+			}));
 			const remoteLabels = ((result.labels ?? []) as Label[])
 				.filter((label) => (this.deletedLabelIds[label.id] || 0) < label.updatedAt);
 			const mergedLabels = mergeLabelLists(this.labels, remoteLabels)
@@ -657,17 +922,15 @@ export class NotesStore {
 				.sort((a, b) => a.name.localeCompare(b.name));
 			const labelsChanged = JSON.stringify(this.labels) !== JSON.stringify(mergedLabels);
 
-			// Do not rewrite every IDB image blob after every sync. Persist only remote notes that
-			// actually changed locally, including equal-timestamp rows that supplied missing image data.
-			const notesToPersist = mergedNotes.filter((merged) => {
-				const local = localById.get(merged.id);
-				const remote = remoteById.get(merged.id);
-				if (!local || !remote) return !local;
+			// Persist notes that gained remote content (full bytes still available on result.notes).
+			const notesToPersist = (result.notes as Note[]).filter((remote) => {
+				const local = localById.get(remote.id);
+				if (!local) return true;
 				if (remote.updatedAt > local.updatedAt) return true;
 				const localImages = new Map((local.images ?? []).map((image) => [image.id, image]));
-				return (merged.images ?? []).some((image) => {
+				return (remote.images ?? []).some((image) => {
 					const previous = localImages.get(image.id);
-					return !previous || (!previous.dataUrl.length && image.dataUrl.length > 0);
+					return !previous || (!previous.dataUrl.length && !previous.thumbUrl && image.dataUrl.length > 0);
 				});
 			});
 

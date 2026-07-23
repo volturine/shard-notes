@@ -50,7 +50,8 @@ export function cloneNote(note: import('$lib/types').Note): import('$lib/types')
 			mime: image.mime,
 			dataUrl: image.dataUrl,
 			createdAt: image.createdAt,
-			...(image.name != null ? { name: image.name } : {})
+			...(image.name != null ? { name: image.name } : {}),
+			...(image.thumbUrl ? { thumbUrl: image.thumbUrl } : {})
 		})),
 		...(note.linkPreviews?.length
 			? {
@@ -64,6 +65,18 @@ export function cloneNote(note: import('$lib/types').Note): import('$lib/types')
 					}))
 				}
 			: {})
+	};
+}
+
+/** Note clone for JSON backup: full note metadata, attachment meta + thumbs, never full image bytes. */
+export function cloneNoteForBackup(note: import('$lib/types').Note): import('$lib/types').Note {
+	const cloned = cloneNote(note);
+	return {
+		...cloned,
+		images: (cloned.images ?? []).map((image) => ({
+			...image,
+			dataUrl: ''
+		}))
 	};
 }
 

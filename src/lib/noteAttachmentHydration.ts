@@ -10,6 +10,12 @@ export function mergeHydratedImages(current: NoteImage[] = [], hydrated: NoteIma
 	return current.map((image) => {
 		if (image.dataUrl) return image;
 		const loaded = hydratedById.get(image.id);
-		return loaded?.dataUrl ? { ...image, dataUrl: loaded.dataUrl, mime: image.mime || loaded.mime } : image;
+		if (!loaded?.dataUrl) return image;
+		return {
+			...image,
+			dataUrl: loaded.dataUrl,
+			mime: image.mime || loaded.mime,
+			...(image.thumbUrl || loaded.thumbUrl ? { thumbUrl: image.thumbUrl || loaded.thumbUrl } : {})
+		};
 	});
 }

@@ -1,4 +1,5 @@
 import type { Note } from '$lib/types';
+import { stableStringify } from '$lib/syncHash';
 import { uid } from '$lib/utils';
 
 export interface KanbanColumn {
@@ -38,7 +39,7 @@ export function columnNotes(board: KanbanBoard, column: KanbanColumn, notes: Not
 	return notes.filter((note) => !note.labels.some((labelId) => boardLabelIds.has(labelId)));
 }
 
-/** Server records win equal timestamps, matching the sync protocol's hash-conflict rule. */
+/** Newer boards win; equal timestamps use canonical content ordering on every device. */
 export function mergeKanbanBoards(
 	local: KanbanBoard[],
 	remote: KanbanBoard[],
@@ -47,7 +48,7 @@ export function mergeKanbanBoards(
 	const byId = new Map(local.map((board) => [board.id, board]));
 	for (const board of remote) {
 		const current = byId.get(board.id);
-		if (!current || board.updatedAt >= current.updatedAt) byId.set(board.id, board);
+		if (!current || board.updatedAt > current.updatedAt || (board.updatedAt === current.updatedAt && stableStringify(board) > stableStringify(current))) byId.set(board.id, board);
 	}
 	return [...byId.values()].filter((board) => (Number(tombstones[board.id]) || 0) < board.updatedAt);
 }

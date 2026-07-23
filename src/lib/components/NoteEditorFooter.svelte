@@ -11,6 +11,7 @@
 		dataUrlByteLength,
 		openAttachment
 	} from '$lib/noteImages';
+	import { displayImageSrc } from '$lib/imageThumb';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { sha256 } from '$lib/syncHash';
 	import { formatStorageError } from '$lib/imageBlob';
@@ -49,8 +50,8 @@
 	let attachError = $state('');
 
 	const imageAttachments = $derived(images.filter(isImageAttachment));
-	const photos = $derived(imageAttachments.filter((attachment) => !!attachment.dataUrl));
-	const pendingPhotos = $derived(imageAttachments.filter((attachment) => !attachment.dataUrl));
+	const photos = $derived(imageAttachments.filter((attachment) => !!displayImageSrc(attachment)));
+	const pendingPhotos = $derived(imageAttachments.filter((attachment) => !displayImageSrc(attachment)));
 	const files = $derived(images.filter((a) => !isImageAttachment(a)));
 	const photoIndexById = $derived(new Map(photos.map((p, i) => [p.id, i])));
 
@@ -195,7 +196,7 @@
 					onclick={() => openPhoto(img.id)}
 					aria-label={`Open ${img.name ?? 'photo'}`}
 				>
-					<img src={img.dataUrl} alt={img.name ?? 'Photo'} class="h-full w-full object-cover" loading="lazy" decoding="async" />
+					<img src={displayImageSrc(img)} alt={img.name ?? 'Photo'} class="h-full w-full object-cover" loading="lazy" decoding="async" />
 				</button>
 				<button
 					type="button"

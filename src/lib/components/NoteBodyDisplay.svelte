@@ -6,6 +6,7 @@
 	import { extractHttpUrls, isUsableLinkPreview } from '$lib/linkPreview';
 	import LinkPreview from './LinkPreview.svelte';
 	import { isImageAttachment, isInlinePreviewable, fileIconLabel, openAttachment } from '$lib/noteImages';
+	import { displayImageSrc } from '$lib/imageThumb';
 	import { notesStore } from '$lib/stores/notes.svelte';
 
 	let { note }: { note: Note } = $props();
@@ -13,8 +14,8 @@
 	const segments = $derived(parseBody(note.body ?? ''));
 	const attachments = $derived(noteAttachments(note));
 	const imageAttachments = $derived(attachments.filter(isImageAttachment));
-	const photos = $derived(imageAttachments.filter((attachment) => !!attachment.dataUrl));
-	const pendingPhotos = $derived(imageAttachments.filter((attachment) => !attachment.dataUrl));
+	const photos = $derived(imageAttachments.filter((attachment) => !!displayImageSrc(attachment)));
+	const pendingPhotos = $derived(imageAttachments.filter((attachment) => !displayImageSrc(attachment)));
 	const files = $derived(attachments.filter((a) => !isImageAttachment(a)));
 	const links = $derived(extractHttpUrls(note.body ?? ''));
 	const previewsByUrl = $derived(
@@ -25,7 +26,12 @@
 	let focusedAttachment = $state<NoteImage | null>(null);
 
 	$effect(() => {
-		if (!contentElement || !(note.images ?? []).some((attachment) => !attachment.dataUrl)) return;
+		// Cards only need thumbs. Full bytes load on explicit open / editor focus.
+		const needsThumbOrFile = (note.images ?? []).some((attachment) => {
+			if (isImageAttachment(attachment)) return !displayImageSrc(attachment);
+			return !attachment.dataUrl;
+		});
+		if (!contentElement || !needsThumbOrFile) return;
 		const request = () => notesStore.requestVisibleNoteAttachments(note.id);
 		if (!('IntersectionObserver' in window)) {
 			const frame = requestAnimationFrame(request);
@@ -40,8 +46,9 @@
 		return () => observer.disconnect();
 	});
 
-	function focusImage(index: number, event: MouseEvent) {
+	async function focusImage(index: number, event: MouseEvent) {
 		event.stopPropagation();
+		await notesStore.ensureNoteAttachments(note.id);
 		focusedImageIndex = index;
 	}
 
@@ -110,7 +117,7 @@
 				aria-label={`Open ${img.name ?? 'photo'}`}
 			>
 				<img
-					src={img.dataUrl}
+					src={displayImageSrc(img)}
 					alt={img.name ?? 'Photo'}
 					class="max-h-32 max-w-full rounded-lg object-cover"
 					loading="lazy"

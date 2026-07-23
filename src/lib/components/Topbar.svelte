@@ -9,6 +9,8 @@
 	let settingsOpen = $state(false);
 	let syncOpen = $state(false);
 	let quickSyncBusy = $state(false);
+	let importingBackup = $state(false);
+	let backupImportError = $state('');
 
 	async function doQuickSync() {
 		if (quickSyncBusy) return;
@@ -30,15 +32,27 @@
 		const input = e.currentTarget as HTMLInputElement;
 		const file = input.files?.[0];
 		if (!file) return;
+		if (importingBackup) return;
+		importingBackup = true;
+		backupImportError = '';
 		const reader = new FileReader();
 		reader.onload = async () => {
 			try {
 				const data = JSON.parse(String(reader.result));
-				await notesStore.importBackup(data);
-				settingsOpen = false;
-			} catch {
-				/* ignore */
+				const result = await notesStore.importBackup(data);
+				if (result.success) settingsOpen = false;
+				else backupImportError = result.error || 'Could not import that backup.';
+			} catch (err) {
+				backupImportError = err instanceof Error ? err.message : 'Could not read that backup file.';
+			} finally {
+				importingBackup = false;
+				input.value = '';
 			}
+		};
+		reader.onerror = () => {
+			importingBackup = false;
+			backupImportError = 'Could not read that backup file.';
+			input.value = '';
 		};
 		reader.readAsText(file);
 	}
@@ -57,6 +71,7 @@
 		}
 		// Escape closes settings
 		if (e.key === 'Escape') {
+			if (importingBackup) return;
 			settingsOpen = false;
 		}
 	}
@@ -65,7 +80,7 @@
 	let settingsContainer: HTMLElement | null = $state(null);
 
 	function handleWindowClick(e: MouseEvent) {
-		if (!settingsOpen) return;
+		if (!settingsOpen || importingBackup) return;
 		const target = e.target as HTMLElement;
 		if (settingsContainer && !settingsContainer.contains(target)) {
 			settingsOpen = false;
@@ -146,17 +161,29 @@
 		</button>
 		{#if settingsOpen}
 			<div class="absolute right-0 top-12 z-30 w-48 rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-surface)] py-1 shadow-lg">
-				<button type="button" onclick={() => { syncOpen = true; settingsOpen = false; }} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">
+				<button type="button" onclick={() => { syncOpen = true; settingsOpen = false; }} disabled={importingBackup} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/10">
 					☁️ Sync settings
 				</button>
 				<div class="my-1 border-t border-[var(--gkc-border)]"></div>
-				<button type="button" onclick={() => { uiStore.toggleDark(); }} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">
-					{#if uiStore.effectiveDark}☀️ Light mode{:else}🌙 Dark mode{/if}
-				</button>
-				<button type="button" onclick={exportBackup} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">Export JSON backup</button>
-				<button type="button" onclick={() => fileInputEl?.click()} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">Import JSON backup</button>
+				{#if importingBackup}
+					{@const progress = notesStore.backupImportProgress}
+					<div class="space-y-2 px-3 py-2 text-xs text-[var(--gkc-text-muted)]" role="status" aria-live="polite">
+						<div class="flex justify-between gap-2"><span>{progress?.phase === 'finishing' ? 'Finishing backup…' : progress ? 'Importing backup…' : 'Reading backup…'}</span>{#if progress}<span>{progress.completed}/{progress.total}</span>{/if}</div>
+						<div class="h-1.5 overflow-hidden rounded-full bg-black/10 dark:bg-white/10"><div class="h-full bg-blue-600 transition-[width]" style={`width: ${progress && progress.total ? Math.round(progress.completed / progress.total * 100) : 8}%`}></div></div>
+					</div>
+				{:else}
+					<button type="button" onclick={() => { uiStore.toggleDark(); }} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">
+						{#if uiStore.effectiveDark}☀️ Light mode{:else}🌙 Dark mode{/if}
+					</button>
+					<button type="button" onclick={exportBackup} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">Export full backup</button>
+					<button type="button" onclick={() => fileInputEl?.click()} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">Import full backup</button>
+				{/if}
+				{#if backupImportError}<p class="px-3 pb-2 text-xs text-red-600" role="alert">{backupImportError}</p>{/if}
 			</div>
 		{/if}
+		<!-- Keep the real input inside settingsContainer: its programmatic click must not
+		     be mistaken for an outside click that hides the import progress UI. -->
+		<input bind:this={fileInputEl} type="file" accept="application/json" onchange={importBackup} class="hidden" />
 	</div>
 
 	<div
@@ -166,7 +193,6 @@
 		K
 	</div>
 
-	<input bind:this={fileInputEl} type="file" accept="application/json" onchange={importBackup} class="hidden" />
 </header>
 
 <svelte:window onkeydown={handleKeydown} onclick={handleWindowClick} />

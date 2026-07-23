@@ -15,9 +15,20 @@ const LINK_PREVIEWS_STORE = 'link-previews';
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 const noteChains = new Map<string, Promise<void>>();
+// Safari can abort overlapping writes while a fresh-device replacement clears
+// the stores. Keep every write on one device-wide chain; noteChains still
+// coalesce rapid writes to the same note before they reach it.
+let deviceWriteChain: Promise<void> = Promise.resolve();
+let writeGeneration = 0;
 
 function imageKey(noteId: string, imageId: string): string {
 	return `${noteId}::${imageId}`;
+}
+
+function enqueueDeviceWrite<T>(operation: () => Promise<T>): Promise<T> {
+	const run = deviceWriteChain.catch(() => undefined).then(operation);
+	deviceWriteChain = run.then(() => undefined, () => undefined);
+	return run;
 }
 
 function getDB(): Promise<IDBPDatabase> {
@@ -49,7 +60,8 @@ function plainImage(image: NoteImage): NoteImage {
 		mime: String(image.mime || 'application/octet-stream'),
 		dataUrl: typeof image.dataUrl === 'string' ? image.dataUrl : '',
 		createdAt: Number(image.createdAt) || 0,
-		...(image.name != null && image.name !== '' ? { name: String(image.name) } : {})
+		...(image.name != null && image.name !== '' ? { name: String(image.name) } : {}),
+		...(typeof image.thumbUrl === 'string' && image.thumbUrl ? { thumbUrl: String(image.thumbUrl) } : {})
 	};
 }
 
@@ -90,12 +102,16 @@ function plainNote(note: Note): Note {
 }
 
 /** Plain, validated data only: never hand Svelte proxies to IndexedDB.
- *  Image bytes live in IMAGES_STORE — note rows keep empty dataUrl placeholders. */
+ *  Image bytes live in IMAGES_STORE — note rows keep empty dataUrl placeholders + thumbs. */
 function detachNote(note: Note): Note {
 	const plain = plainNote(note);
 	return {
 		...plain,
-		images: (plain.images ?? []).map((image) => ({ ...image, dataUrl: '' }))
+		images: (plain.images ?? []).map((image) => ({
+			...image,
+			dataUrl: '',
+			...(image.thumbUrl ? { thumbUrl: image.thumbUrl } : {})
+		}))
 	};
 }
 
@@ -110,7 +126,10 @@ async function imageFromStoredValue(
 ): Promise<NoteImage | null> {
 	if (meta.dataUrl?.length > 20) return plainImage(meta);
 	const stored = await db.get(IMAGES_STORE, imageKey(noteId, meta.id));
-	if (!(stored instanceof Blob)) return null;
+	if (!(stored instanceof Blob)) {
+		// Keep thumb-only metadata so cards still render while full bytes are missing.
+		return plainImage({ ...meta, dataUrl: '' });
+	}
 	return plainImage({ ...meta, mime: meta.mime || stored.type, dataUrl: await blobToDataUrl(stored) });
 }
 
@@ -183,19 +202,28 @@ export async function getAllNotes(): Promise<Note[]> {
 
 export function putNote(note: Note): Promise<void> {
 	const snapshot = snapshotNote(note);
-	return enqueueNote(snapshot.id, () => putNoteSnapshot(snapshot));
+	const generation = writeGeneration;
+	return enqueueNote(snapshot.id, () => enqueueDeviceWrite(async () => {
+		// A replacement requested after this save owns the final device state.
+		if (generation !== writeGeneration) return;
+		await putNoteSnapshot(snapshot);
+	}));
 }
 
 export function deleteNote(id: string): Promise<void> {
+	const generation = writeGeneration;
 	return enqueueNote(id, async () => {
-		const db = await getDB();
-		const imageKeys = (await db.getAllKeys(IMAGES_STORE)).filter((key) =>
-			String(key).startsWith(`${id}::`)
-		);
-		const tx = db.transaction([NOTES_STORE, IMAGES_STORE], 'readwrite');
-		tx.objectStore(NOTES_STORE).delete(id);
-		for (const key of imageKeys) tx.objectStore(IMAGES_STORE).delete(key);
-		await tx.done;
+		await enqueueDeviceWrite(async () => {
+			if (generation !== writeGeneration) return;
+			const db = await getDB();
+			const imageKeys = (await db.getAllKeys(IMAGES_STORE)).filter((key) =>
+				String(key).startsWith(`${id}::`)
+			);
+			const tx = db.transaction([NOTES_STORE, IMAGES_STORE], 'readwrite');
+			tx.objectStore(NOTES_STORE).delete(id);
+			for (const key of imageKeys) tx.objectStore(IMAGES_STORE).delete(key);
+			await tx.done;
+		});
 	});
 }
 
@@ -205,18 +233,26 @@ export async function getAllLabels(): Promise<Label[]> {
 }
 
 export async function putLabel(label: Label): Promise<void> {
-	const db = await getDB();
-	await db.put(LABELS_STORE, {
-		id: String(label.id),
-		name: String(label.name),
-		createdAt: Number(label.createdAt) || 0,
-		updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
+	const generation = writeGeneration;
+	await enqueueDeviceWrite(async () => {
+		if (generation !== writeGeneration) return;
+		const db = await getDB();
+		await db.put(LABELS_STORE, {
+			id: String(label.id),
+			name: String(label.name),
+			createdAt: Number(label.createdAt) || 0,
+			updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
+		});
 	});
 }
 
 export async function deleteLabel(id: string): Promise<void> {
-	const db = await getDB();
-	await db.delete(LABELS_STORE, id);
+	const generation = writeGeneration;
+	await enqueueDeviceWrite(async () => {
+		if (generation !== writeGeneration) return;
+		const db = await getDB();
+		await db.delete(LABELS_STORE, id);
+	});
 }
 
 export async function bulkPutNotes(notes: Note[]): Promise<void> {
@@ -226,30 +262,77 @@ export async function bulkPutNotes(notes: Note[]): Promise<void> {
 }
 
 export async function bulkPutLabels(labels: Label[]): Promise<void> {
-	const db = await getDB();
-	const tx = db.transaction(LABELS_STORE, 'readwrite');
-	for (const label of labels) {
-		tx.store.put({
-			id: String(label.id),
-			name: String(label.name),
-			createdAt: Number(label.createdAt) || 0,
-			updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
+	const generation = writeGeneration;
+	await enqueueDeviceWrite(async () => {
+		if (generation !== writeGeneration) return;
+		const db = await getDB();
+		const tx = db.transaction(LABELS_STORE, 'readwrite');
+		for (const label of labels) {
+			tx.store.put({
+				id: String(label.id),
+				name: String(label.name),
+				createdAt: Number(label.createdAt) || 0,
+				updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
+			});
+		}
+		await tx.done;
 		});
-	}
-	await tx.done;
 }
 
 export async function clearAllNotes(): Promise<void> {
-	const db = await getDB();
-	const tx = db.transaction([NOTES_STORE, IMAGES_STORE], 'readwrite');
-	tx.objectStore(NOTES_STORE).clear();
-	tx.objectStore(IMAGES_STORE).clear();
-	await tx.done;
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		const tx = db.transaction([NOTES_STORE, IMAGES_STORE], 'readwrite');
+		tx.objectStore(NOTES_STORE).clear();
+		tx.objectStore(IMAGES_STORE).clear();
+		await tx.done;
+	});
 }
 
 export async function clearAllLabels(): Promise<void> {
-	const db = await getDB();
-	await db.clear(LABELS_STORE);
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		await db.clear(LABELS_STORE);
+	});
+}
+
+/**
+ * Replace a newly linked device's records as one exclusive write operation.
+ * The per-note Blob commits stay short for iOS Safari, while the write gate
+ * prevents an earlier seed/autosave from committing after the clear.
+ */
+export function replaceAllDeviceData(
+	notes: Note[],
+	labels: Label[],
+	onNoteCommitted?: (note: Note) => void | Promise<void>
+): Promise<void> {
+	const generation = ++writeGeneration;
+	const labelSnapshots = labels.map((label) => ({
+		id: String(label.id),
+		name: String(label.name),
+		createdAt: Number(label.createdAt) || 0,
+		updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
+	}));
+	return enqueueDeviceWrite(async () => {
+		// A later replacement supersedes this one before it touches storage.
+		if (generation !== writeGeneration) return;
+		const db = await getDB();
+		const clear = db.transaction([NOTES_STORE, IMAGES_STORE, LABELS_STORE], 'readwrite');
+		clear.objectStore(NOTES_STORE).clear();
+		clear.objectStore(IMAGES_STORE).clear();
+		clear.objectStore(LABELS_STORE).clear();
+		await clear.done;
+		for (const note of notes) {
+			await putNoteSnapshot(snapshotNote(note));
+			// Release each downloaded full-resolution data URL immediately after its
+			// Blob transaction is durable; a fresh iPhone must not retain the full
+			// account while the rest of the replacement is still writing.
+			await onNoteCommitted?.(note);
+		}
+		const labelWrite = db.transaction(LABELS_STORE, 'readwrite');
+		for (const label of labelSnapshots) labelWrite.store.put(label);
+		await labelWrite.done;
+	});
 }
 
 /** Shared link-preview cache: one fetch per URL, reused across notes. */

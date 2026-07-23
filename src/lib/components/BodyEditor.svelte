@@ -115,6 +115,85 @@
 		syncBody();
 	}
 
+	/** Consecutive non-task lines share one textarea so multi-line select works. Tasks stay per-row. */
+	function isPlainRunStart(index: number): boolean {
+		if (!lines[index] || lines[index].isCheck) return false;
+		return index === 0 || lines[index - 1].isCheck;
+	}
+
+	function plainRunEnd(start: number): number {
+		let end = start;
+		while (end + 1 < lines.length && !lines[end + 1].isCheck) end += 1;
+		return end;
+	}
+
+	function plainRunText(start: number): string {
+		return lines.slice(start, plainRunEnd(start) + 1).map((line) => line.text).join('\n');
+	}
+
+	function onPlainRunInput(start: number, e: Event) {
+		const input = e.target as HTMLTextAreaElement;
+		const selectionStart = input.selectionStart;
+		const selectionEnd = input.selectionEnd;
+		const parts = input.value.split('\n');
+		const end = plainRunEnd(start);
+		const oldCount = end - start + 1;
+		const oldLines = lines.slice(start, end + 1);
+		const next: Line[] = parts.map((part, offset) => {
+			const existing = oldLines[offset];
+			const checkMatch = part.match(CHECK_RE);
+			if (checkMatch) {
+				const check = parseCheckLine(part);
+				if (existing) {
+					existing.isCheck = true;
+					existing.checked = check?.checked ?? false;
+					existing.indent = check?.indent ?? 0;
+					existing.text = check?.text ?? '';
+					return existing;
+				}
+				return newLine(check?.text ?? '', true, check?.checked ?? false, check?.indent ?? 0);
+			}
+			if (existing && !existing.isCheck) {
+				existing.text = part;
+				existing.isCheck = false;
+				existing.checked = false;
+				existing.indent = 0;
+				return existing;
+			}
+			return newLine(part, false);
+		});
+		if (next.length === 0) next.push(newLine());
+		lines.splice(start, oldCount, ...next);
+		syncBody();
+		// Keep caret stable after the run is re-rendered from state.
+		const runStart = start;
+		void tick().then(() => {
+			requestAnimationFrame(() => {
+				const el = container?.querySelector(`[data-plain-run="${runStart}"]`) as HTMLTextAreaElement | null;
+				if (!el) return;
+				const max = el.value.length;
+				el.setSelectionRange(Math.min(selectionStart, max), Math.min(selectionEnd, max));
+			});
+		});
+	}
+
+	function onPlainRunKeydown(e: KeyboardEvent, start: number) {
+		// Enter stays native so multi-line plain text can grow inside one control.
+		if (e.key !== 'Backspace' || start <= 0) return;
+		const input = e.target as HTMLTextAreaElement;
+		if (input.selectionStart !== 0 || input.selectionEnd !== 0) return;
+		e.preventDefault();
+		// Merge the first plain line into the previous row (task or text).
+		const first = lines[start];
+		const prev = lines[start - 1];
+		const prevLen = prev.text.length;
+		prev.text += first.text;
+		lines.splice(start, 1);
+		syncBody();
+		pendingFocus = start - 1;
+		pendingCursor = prevLen;
+	}
+
 	function toggleCheck(i: number, e: MouseEvent) {
 		e.stopPropagation();
 		lines[i].checked = !lines[i].checked;
@@ -275,7 +354,19 @@
 	async function focusLineAfterRender(idx: number, cursor: number | null) {
 		await tick();
 		requestAnimationFrame(() => {
-			const el = container?.querySelector(`[data-line="${idx}"]`) as HTMLTextAreaElement;
+			let el = container?.querySelector(`[data-line="${idx}"]`) as HTMLTextAreaElement | null;
+			let caret = cursor ?? (lines[idx]?.text.length ?? 0);
+			// Plain multi-line runs use one textarea keyed by the run start.
+			if (!el && lines[idx] && !lines[idx].isCheck) {
+				let start = idx;
+				while (start > 0 && !lines[start - 1].isCheck) start -= 1;
+				el = container?.querySelector(`[data-plain-run="${start}"]`) as HTMLTextAreaElement | null;
+				if (el) {
+					let offset = caret;
+					for (let i = start; i < idx; i++) offset += (lines[i]?.text.length ?? 0) + 1;
+					caret = offset;
+				}
+			}
 			if (!el) return;
 			const scroller = container?.closest('.scrollable') as HTMLElement | null;
 			const scrollTop = scroller?.scrollTop ?? 0;
@@ -284,7 +375,7 @@
 			} catch {
 				el.focus();
 			}
-			if (cursor !== null) el.setSelectionRange(cursor, cursor);
+			if (caret !== null) el.setSelectionRange(caret, caret);
 			const restoreScroll = () => {
 				if (scroller) scroller.scrollTop = scrollTop;
 			};
@@ -425,11 +516,11 @@
 				</button>
 			</div>
 		{:else if !focusedChildIds.has(line.id)}
-			<div
-				class="flex w-full min-w-0 items-start gap-2 py-0.5"
-				style={line.isCheck && line.indent > 0 ? `padding-left: ${line.indent * 1.25}rem` : undefined}
-			>
-				{#if line.isCheck}
+			{#if line.isCheck}
+				<div
+					class="flex w-full min-w-0 items-start gap-2 py-0.5"
+					style={line.indent > 0 ? `padding-left: ${line.indent * 1.25}rem` : undefined}
+				>
 					<button
 						type="button"
 						data-checklist-toggle
@@ -442,21 +533,31 @@
 					>
 						{#if line.checked}✓{/if}
 					</button>
-				{/if}
+					<textarea
+						rows="1"
+						data-line={i}
+						value={line.text}
+						oninput={(e) => onLineInput(i, e)}
+						onblur={() => discardEmptyDraft(line.id)}
+						onkeydown={(e) => onLineKeydown(e, i)}
+						onclick={() => onFocusTask?.(parentTaskIndex(i))}
+						placeholder={!line.text ? 'Task' : ''}
+						class="flex-1 min-w-0 resize-none overflow-hidden bg-transparent outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content] {line.checked ? 'line-through opacity-50' : ''} {line.indent > 0 ? 'text-[13px]' : ''}"
+					></textarea>
+				</div>
+			{:else if isPlainRunStart(i)}
+				<!-- One textarea for consecutive plain lines: multi-line select without affecting task focus. -->
 				<textarea
-					rows="1"
+					rows={plainRunEnd(i) - i + 1}
 					data-line={i}
-					value={line.text}
-					oninput={(e) => onLineInput(i, e)}
-					onblur={() => discardEmptyDraft(line.id)}
-					onkeydown={(e) => onLineKeydown(e, i)}
-					onclick={() => {
-						if (line.isCheck) onFocusTask?.(parentTaskIndex(i));
-					}}
-					placeholder={i === 0 && lines.length === 1 && !line.isCheck ? placeholder : line.isCheck && !line.text ? 'Task' : ''}
-					class="flex-1 min-w-0 resize-none overflow-hidden bg-transparent outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content] {line.checked ? 'line-through opacity-50' : ''} {line.indent > 0 ? 'text-[13px]' : ''}"
+					data-plain-run={i}
+					value={plainRunText(i)}
+					oninput={(e) => onPlainRunInput(i, e)}
+					onkeydown={(e) => onPlainRunKeydown(e, i)}
+					placeholder={i === 0 && plainRunEnd(i) === 0 ? placeholder : ''}
+					class="block w-full min-w-0 resize-none overflow-hidden bg-transparent py-0.5 outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content]"
 				></textarea>
-			</div>
+			{/if}
 		{/if}
 	{/each}
 </div>

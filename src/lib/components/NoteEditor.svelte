@@ -57,7 +57,9 @@
 
 	function focusBodyFromPage(event: MouseEvent) {
 		const target = event.target;
-		if (target instanceof Element && target.closest('button, input, textarea, select, a, [contenteditable="true"]')) return;
+		// Match any contenteditable host (including plaintext-only). A strict ="true"
+		// check lets page clicks steal focus and collapse multi-line iOS selections.
+		if (target instanceof Element && target.closest('button, input, textarea, select, a, [contenteditable]')) return;
 		focusBodySignal++;
 	}
 

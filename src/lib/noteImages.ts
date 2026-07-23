@@ -2,6 +2,7 @@ import { uid } from './utils';
 import type { NoteImage } from './types';
 import { extractDngJpeg, isDngFile, jpegName } from './dngCanonical';
 import { dataUrlToBlob } from './imageBlob';
+import { makeImageThumbDataUrl } from './imageThumb';
 
 /** Browser-renderable image (preview / fullscreen). Excludes raw DNG before convert. */
 export function isImageMime(mime: string): boolean {
@@ -43,7 +44,7 @@ export function fileIconLabel(mime: string, name?: string): string {
 
 /**
  * Store any file as a note attachment (data URL).
- * DNG → embedded JPEG for preview; other images kept full-res; non-images as-is.
+ * DNG → embedded JPEG for preview; photos keep full bytes plus a small thumb; non-images as-is.
  * No size cap (same as photos).
  */
 export async function fileToNoteImage(file: File): Promise<NoteImage> {
@@ -56,7 +57,6 @@ export async function fileToNoteImage(file: File): Promise<NoteImage> {
 		mime = 'image/jpeg';
 		name = jpegName(file.name);
 	} else if (!mime || mime === 'application/octet-stream') {
-		// Best-effort mime from extension when browser omits type
 		const ext = name.split('.').pop()?.toLowerCase();
 		const byExt: Record<string, string> = {
 			pdf: 'application/pdf',
@@ -79,13 +79,22 @@ export async function fileToNoteImage(file: File): Promise<NoteImage> {
 		if (ext && byExt[ext]) mime = byExt[ext];
 	}
 	const dataUrl = await readBlobAsDataUrl(image);
+	const thumbUrl = isImageMime(mime) ? (await makeImageThumbDataUrl(dataUrl)) ?? undefined : undefined;
 	return {
 		id: uid(),
 		mime,
 		dataUrl,
+		...(thumbUrl ? { thumbUrl } : {}),
 		name,
 		createdAt: Date.now()
 	};
+}
+
+/** Drop full bytes from memory while keeping the small resident thumb (and IDB full blob). */
+export function stripFullImageBytes(image: NoteImage): NoteImage {
+	if (!isImageMime(image.mime)) return image;
+	if (!image.dataUrl) return image;
+	return { ...image, dataUrl: '' };
 }
 
 export function isInlinePreviewable(att: Pick<NoteImage, 'mime'>): boolean {
@@ -100,7 +109,6 @@ export async function openAttachment(att: NoteImage): Promise<void> {
 	const mime = att.mime || blob.type || 'application/octet-stream';
 	const file = new File([blob], name, { type: mime });
 
-	// iOS / Android: share sheet includes "Save to Files"
 	if (typeof navigator !== 'undefined' && typeof navigator.canShare === 'function') {
 		try {
 			if (navigator.canShare({ files: [file] })) {
@@ -108,7 +116,6 @@ export async function openAttachment(att: NoteImage): Promise<void> {
 				return;
 			}
 		} catch (err) {
-			// User cancelled share sheet — stop; don't fall through to a broken open.
 			if (err instanceof Error && err.name === 'AbortError') return;
 		}
 	}
@@ -122,7 +129,6 @@ export async function openAttachment(att: NoteImage): Promise<void> {
 		}
 	};
 
-	// Browser download fallback for formats without an in-app renderer.
 	const a = document.createElement('a');
 	a.href = url;
 	a.download = name;

@@ -38,6 +38,9 @@ export function formatStorageError(err: unknown): string {
 		if (err.name === 'QuotaExceededError') {
 			return 'Storage full on this device — free space or remove old notes/attachments.';
 		}
+		if (err.name === 'AbortError') {
+			return 'The browser stopped the local storage write. Keep Shard open and retry; if it repeats, free device storage.';
+		}
 		if (err.name === 'DataCloneError') {
 			return 'Browser could not store this data — refresh and try again.';
 		}
